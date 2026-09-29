@@ -77,9 +77,28 @@ class LayerTests(unittest.TestCase):
             for node in ast.walk(ast.parse(path.read_text())):
                 if isinstance(node, ast.ImportFrom):
                     self.assertFalse(node.level > 1)
-                    self.assertFalse((node.module or "").startswith("src.backend"))
+                    if (node.module or "").startswith("src.backend"):
+                        self.assertEqual(node.module, "src.backend.logs.log")
                 elif isinstance(node, ast.Import):
                     self.assertFalse(any(alias.name.startswith("src.backend") for alias in node.names))
+
+    def test_authentication_logs_do_not_include_secrets(self):
+        from src.backend.logs.log import logger
+
+        sign = "sensitive-signature-that-must-not-be-logged"
+        password = "sensitive-password"
+        with self.assertLogs(logger, level="INFO") as captured:
+            tokens = JWT(sign=sign)
+            token = tokens.write({"user_id": 7})
+            tokens.read(token)
+            passwords = PasswordHash(rounds=4)
+            password_hash = passwords.generate(password)
+            passwords.compare(password, password_hash)
+        output = "\n".join(captured.output)
+        self.assertIn("JWT.write", output)
+        self.assertIn("PasswordHash.compare", output)
+        for value in (sign, password, token, password_hash):
+            self.assertNotIn(value, output)
 
 
 if __name__ == "__main__":
