@@ -1,25 +1,37 @@
-"""Authenticated Resend transport; message composition belongs in an adapter."""
+"""Authenticated Resend connection; message composition belongs elsewhere."""
 
-from .http import HTTPConnection
+from urllib.parse import urlsplit
+
+import requests
 
 
-class ResendConnection(HTTPConnection):
+class ResendConnection:
     def __init__(self, api_key: str | None, *, base_url: str = "https://api.resend.com", timeout: int = 30) -> None:
-        super().__init__(base_url, timeout=timeout,
-                         headers={"Authorization": f"Bearer {api_key}"} if api_key else {})
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
         self._api_key = api_key
 
-    def request(self, method: str, path: str = "", **kwargs):
+    def request(self, method: str, path: str = "", **kwargs) -> requests.Response:
         if not self._api_key:
             raise ValueError("KEY_EMAIL is required for Resend")
-        return super().request(method, path, **kwargs)
-
-    def test_connection(self, path: str = "/domains") -> bool:
-        """Read-only authentication probe; requires a key allowed to list domains."""
-        return super().test_connection(path)
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        parsed = urlsplit(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise ValueError("An absolute HTTP(S) URL is required for Resend")
+        headers = {**kwargs.pop("headers", {}), "Authorization": f"Bearer {self._api_key}"}
+        kwargs.setdefault("timeout", self.timeout)
+        with requests.Session() as session:
+            response = session.request(method, url, headers=headers, **kwargs)
+            response.raise_for_status()
+            return response
 
     def test(self, path: str = "/domains") -> bool:
-        return self.test_connection(path)
+        """Read-only authentication probe; requires permission to list domains."""
+        self.request("GET", path)
+        return True
+
+    def test_connection(self, path: str = "/domains") -> bool:
+        return self.test(path)
 
     def __call__(self, path: str = "/domains") -> "ResendConnection":
         self.test(path)

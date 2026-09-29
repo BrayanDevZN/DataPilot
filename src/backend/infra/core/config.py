@@ -37,10 +37,7 @@ class Settings:
     database_url: str | None = field(default=None, repr=False)
     db_port: int = 5432
     db_connect_timeout: int = 10
-    http_timeout: int = 30
-    ai_timeout: int = 180
-    ai_url: str = "https://web-production-40ead.up.railway.app"
-    ai_health_path: str = "/docs"
+    email_timeout: int = 30
     resend_url: str = "https://api.resend.com"
     key_email: str | None = field(default=None, repr=False)
     email_user: str = "DataPilot <no-reply@datapilotplataform.com>"
@@ -59,10 +56,7 @@ class Settings:
             database_url=os.getenv("DATABASE_URL"),
             db_port=positive_int("DB_PORT", 5432),
             db_connect_timeout=positive_int("DB_CONNECT_TIMEOUT", 10),
-            http_timeout=positive_int("HTTP_TIMEOUT", 30),
-            ai_timeout=positive_int("AI_TIMEOUT", 180),
-            ai_url=os.getenv("AI_URL", cls.ai_url),
-            ai_health_path=os.getenv("AI_HEALTH_PATH", cls.ai_health_path),
+            email_timeout=positive_int("EMAIL_TIMEOUT", 30),
             resend_url=os.getenv("RESEND_URL", cls.resend_url),
             key_email=os.getenv("KEY_EMAIL"),
             email_user=os.getenv("EMAIL_USER", cls.email_user),

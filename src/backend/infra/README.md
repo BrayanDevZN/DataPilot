@@ -59,14 +59,11 @@ importam esta camada. Sessões não devem ser compartilhadas entre requisições
 | Classe | Método de teste | Método que testa e retorna o objeto |
 | --- | --- | --- |
 | `SQLConnection` | `await connection.test()` | `await connection()` retorna engine e fábrica |
-| `HTTPConnection` | `infra.http.test(url)` | `infra.http(url)` |
-| `AIConnection` | `infra.ai.test()` | `infra.ai()` |
 | `ResendConnection` | `infra.email.test()` | `infra.email()` |
 
-HTTP, IA e Resend continuam com transporte síncrono; os objetos SQL são assíncronos.
-O teste HTTP faz GET e exige resposta 2xx. IA usa `AI_HEALTH_PATH` (padrão `/docs`),
-verificando disponibilidade HTTP, sem chamar o modelo. Resend consulta `/domains`,
-sem enviar e-mail; exige chave com permissão para listar domínios.
+Resend usa transporte síncrono; os objetos SQL são assíncronos. O teste do Resend
+consulta `/domains` sem enviar e-mail e exige resposta 2xx e chave com permissão
+para listar domínios. `EMAIL_TIMEOUT` configura o timeout desse transporte.
 
 Banco SQL externo exige um driver compatível com asyncio instalado:
 

@@ -1,9 +1,7 @@
 """Composition root for connection objects. Importing performs no network I/O."""
 
-from .connection.ai import AIConnection
 from .connection.database import PostgreSQLConnection, SQLConnection
 from .connection.email import ResendConnection
-from .connection.http import HTTPConnection
 from .core.config import Settings
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -16,11 +14,8 @@ class Infrastructure:
             username=settings.db_user, password=settings.db_password,
             database_url=settings.database_url, connect_timeout=settings.db_connect_timeout,
         )
-        self.http = HTTPConnection(timeout=settings.http_timeout)
-        self.ai = AIConnection(settings.ai_url, timeout=settings.ai_timeout,
-                               health_path=settings.ai_health_path)
         self.email = ResendConnection(settings.key_email, base_url=settings.resend_url,
-                                      timeout=settings.http_timeout)
+                                      timeout=settings.email_timeout)
 
     def external_database(self, url: str, *, connect_args: dict | None = None) -> SQLConnection:
         """Each external source owns its engine; callers must close it after use."""
