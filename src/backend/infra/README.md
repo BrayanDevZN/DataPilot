@@ -79,3 +79,19 @@ async def use_external():
 
 Validação de fontes fornecidas pelo usuário (permissões, URLs públicas, consultas
 permitidas e limites) fica no adapter/caso de uso antes de chamar o transporte.
+
+## Logs
+
+A configuração global está em `src/backend/logs/log.py`:
+
+```python
+from src.backend.logs.log import logger
+
+logger.info("Iniciando operação")
+```
+
+Os métodos da infraestrutura registram início, conclusão e falhas no terminal e
+em `src/backend/logs/app.log`. O caminho independe do diretório de execução.
+O arquivo usa rotação de 5 MiB com três backups. Logs e backups estão no
+`.gitignore` da raiz. Argumentos, resultados e mensagens de exceção não são
+registrados automaticamente, para evitar expor credenciais.

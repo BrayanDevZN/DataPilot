@@ -1,5 +1,7 @@
 """Composition root for connection objects. Importing performs no network I/O."""
 
+from src.backend.logs.log import logger, log_operation
+
 from .connection.database import PostgreSQLConnection, SQLConnection
 from .connection.email import ResendConnection
 from .core.config import Settings
@@ -7,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 
 class Infrastructure:
+    @log_operation
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.database = PostgreSQLConnection(
@@ -16,11 +19,14 @@ class Infrastructure:
         )
         self.email = ResendConnection(settings.key_email, base_url=settings.resend_url,
                                       timeout=settings.email_timeout)
+        logger.info("Infraestrutura pronta: PostgreSQL e Resend")
 
+    @log_operation
     def external_database(self, url: str, *, connect_args: dict | None = None) -> SQLConnection:
         """Each external source owns its engine; callers must close it after use."""
         return SQLConnection(url, connect_args=connect_args)
 
+    @log_operation
     async def close(self) -> None:
         await self.database.close()
 
@@ -30,6 +36,7 @@ infra = Infrastructure(settings)
 database = infra.database
 
 
+@log_operation
 async def connect_database() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
     """Initialize and test the shared database at application startup."""
     return await database()

@@ -1,5 +1,7 @@
 """Load the local infrastructure .env, or the repository root .env."""
 
+from src.backend.logs.log import logger, log_operation
+
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -7,17 +9,21 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
+@log_operation
 def load_environment(project_root: Path | None = None) -> Path | None:
     root = project_root if project_root is not None else Path(__file__).resolve().parents[4]
     local_env = root / "src/backend/infra/core/.env"
     root_env = root / ".env"
     selected = local_env if local_env.is_file() else root_env
     if not selected.is_file():
+        logger.info("Nenhum arquivo .env encontrado; usando variáveis do processo")
         return None
+    logger.info("Carregando configuração de %s; ambiente do processo tem prioridade", selected)
     load_dotenv(selected, override=False)
     return selected
 
 
+@log_operation
 def positive_int(name: str, default: int) -> int:
     try:
         value = int(os.getenv(name, str(default)))
@@ -46,6 +52,7 @@ class Settings:
     cors_allowed_origins: tuple[str, ...] = ()
 
     @classmethod
+    @log_operation
     def from_env(cls, project_root: Path | None = None) -> "Settings":
         load_environment(project_root)
         return cls(

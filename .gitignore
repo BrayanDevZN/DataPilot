@@ -5,3 +5,57 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+
+# Python environments, packaging and tools
+venv/
+env/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+coverage.xml
+
+# Frontend dependencies and generated output
+node_modules/
+dist/
+build/
+.vite/
+.cache/
+.parcel-cache/
+*.tsbuildinfo
+
+# Logs, including rotated backend logs
+*.log
+*.log.*
+src/backend/logs/app.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors, OS and temporary files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*.tmp
+*.bak
+tmp/
+temp/
+
+# Local credentials, databases and deployment caches
+*.pem
+*.key
+*.sqlite
+*.sqlite3
+.railway/
