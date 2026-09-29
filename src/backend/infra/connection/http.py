@@ -34,3 +34,10 @@ class HTTPConnection:
         """A successful GET checks reachability of the chosen endpoint."""
         self.request("GET", path)
         return True
+
+    def test(self, path: str = "") -> bool:
+        return self.test_connection(path)
+
+    def __call__(self, path: str = "") -> "HTTPConnection":
+        self.test(path)
+        return self

@@ -5,6 +5,7 @@ from .connection.database import PostgreSQLConnection, SQLConnection
 from .connection.email import ResendConnection
 from .connection.http import HTTPConnection
 from .core.config import Settings
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 
 class Infrastructure:
@@ -25,10 +26,15 @@ class Infrastructure:
         """Each external source owns its engine; callers must close it after use."""
         return SQLConnection(url, connect_args=connect_args)
 
-    def close(self) -> None:
-        self.database.close()
+    async def close(self) -> None:
+        await self.database.close()
 
 
 settings = Settings.from_env()
 infra = Infrastructure(settings)
 database = infra.database
+
+
+async def connect_database() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
+    """Initialize and test the shared database at application startup."""
+    return await database()

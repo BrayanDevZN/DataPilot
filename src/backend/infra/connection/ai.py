@@ -10,3 +10,10 @@ class AIConnection(HTTPConnection):
 
     def test_connection(self, path: str | None = None) -> bool:
         return super().test_connection(self.health_path if path is None else path)
+
+    def test(self, path: str | None = None) -> bool:
+        return self.test_connection(path)
+
+    def __call__(self, path: str | None = None) -> "AIConnection":
+        self.test(path)
+        return self

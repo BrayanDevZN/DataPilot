@@ -17,3 +17,10 @@ class ResendConnection(HTTPConnection):
     def test_connection(self, path: str = "/domains") -> bool:
         """Read-only authentication probe; requires a key allowed to list domains."""
         return super().test_connection(path)
+
+    def test(self, path: str = "/domains") -> bool:
+        return self.test_connection(path)
+
+    def __call__(self, path: str = "/domains") -> "ResendConnection":
+        self.test(path)
+        return self

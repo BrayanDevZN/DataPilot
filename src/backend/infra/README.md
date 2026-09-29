@@ -1,71 +1,84 @@
 # Infraestrutura do backend
 
-Esta camada configura conexões. CRUD, migrations, leitura de tabelas, tratamento de
-arquivos e regras de negócio serão implementados nas próximas camadas.
+Conexões e configuração. CRUD, migrations e regras de negócio ficam nas outras
+camadas. Instale na raiz: `pip install -r src/backend/requirements.txt`.
 
 ## Configuração
 
-Na raiz do DataPilot, instale `pip install -r src/backend/requirements.txt`.
 Copie `core/.env.example` para `src/backend/infra/core/.env` ou para `.env` na raiz.
-O arquivo local é selecionado quando existe; somente na ausência dele é usado o
-arquivo da raiz. A seleção independe do diretório de execução. Variáveis já
-definidas no processo têm prioridade. Sem arquivos, são usadas as variáveis do
-processo. Credenciais não são incluídas na representação de `Settings`.
+O arquivo local é selecionado quando existe; na ausência dele, usa-se o da raiz.
+Variáveis já definidas no processo têm prioridade. A seleção independe do diretório
+de execução. Sem arquivos, são usadas as variáveis do processo.
 
-## Uso nas próximas camadas
+`DATABASE_URL` prevalece sobre `DB_*`. PostgreSQL/Supabase usa o driver assíncrono
+psycopg via `create_async_engine`, preservando parâmetros como `sslmode`.
 
-Execute o backend como pacote a partir da raiz do projeto:
+## Banco assíncrono
+
+`manage.py` disponibiliza `database`, `infra`, `settings` e `connect_database`.
+Importar o módulo não abre conexões nem executa consultas.
 
 ```python
-from src.backend.infra.manage import database, infra, settings
+from src.backend.infra.manage import database, connect_database, infra
 
-engine = database.engine  # engine compartilhado; não abre a conexão neste acesso
-database.test_connection()  # SELECT 1; True ou exceção
+async def startup():
+    engine, session_factory = await connect_database()
+    # Equivalente a: engine, session_factory = await database()
+    # Retornos: AsyncEngine e async_sessionmaker[AsyncSession].
+    return engine, session_factory
 
-# Um repository poderá receber esse engine por injeção no seu construtor.
-# O domínio e os casos de uso não devem importar infra.
+async def shutdown():
+    await infra.close()
 ```
 
-`manage.py` monta `infra` e exporta `database`. Não faz consultas, cria tabelas ou
-testa serviços ao ser importado. Credenciais ausentes de PostgreSQL/Resend são
-validadas quando o respectivo recurso é utilizado.
+A classe do banco fornece:
 
-| Objeto/classe | Uso | Teste explícito |
+- `base_url()`: monta a URL;
+- `create_engine()`: cria/reutiliza o `AsyncEngine`;
+- `create_session()`: cria/reutiliza a fábrica de `AsyncSession`;
+- `await test()`: executa `SELECT 1`, retornando `True` ou propagando a falha;
+- `await connection()`: o `__call__` monta os objetos, testa a conexão e retorna
+  `(engine, session_factory)`;
+- `await close()`: libera o pool.
+
+`test_connection()` é um alias assíncrono de `test()`. Engine e fábrica são
+reutilizados; cada chamada à fábrica cria uma sessão independente:
+
+```python
+async def repository_operation(session_factory):
+    async with session_factory() as session:
+        # Consultas/transações do repository usam await session.execute(...).
+        pass
+```
+
+Repositories recebem a fábrica/engine por injeção. Domínio e casos de uso não
+importam esta camada. Sessões não devem ser compartilhadas entre requisições.
+
+## Outros serviços
+
+| Classe | Método de teste | Método que testa e retorna o objeto |
 | --- | --- | --- |
-| `database` / `PostgreSQLConnection` | PostgreSQL/Supabase, via psycopg | `test_connection()` executa `SELECT 1` |
-| `SQLConnection` | Banco SQL externo, com driver correspondente instalado | `test_connection()` executa `SELECT 1` |
-| `infra.http` / `HTTPConnection` | Transporte para APIs externas | `test_connection(url)` faz GET |
-| `infra.ai` / `AIConnection` | Transporte para a API de IA | `test_connection()` acessa `AI_HEALTH_PATH` |
-| `infra.email` / `ResendConnection` | Transporte autenticado para Resend | `test_connection()` consulta `/domains` |
+| `SQLConnection` | `await connection.test()` | `await connection()` retorna engine e fábrica |
+| `HTTPConnection` | `infra.http.test(url)` | `infra.http(url)` |
+| `AIConnection` | `infra.ai.test()` | `infra.ai()` |
+| `ResendConnection` | `infra.email.test()` | `infra.email()` |
 
-Os testes HTTP exigem resposta 2xx e propagam falhas; não enviam e-mails nem geram
-análises. O teste Resend exige permissão de leitura de domínios: uma chave restrita
-a envio pode receber 403 mesmo sendo válida para enviar. `/docs` testa apenas a
-disponibilidade HTTP da IA, não o modelo; ajuste o caminho para um healthcheck
-quando esse endpoint existir no serviço.
+HTTP, IA e Resend continuam com transporte síncrono; os objetos SQL são assíncronos.
+O teste HTTP faz GET e exige resposta 2xx. IA usa `AI_HEALTH_PATH` (padrão `/docs`),
+verificando disponibilidade HTTP, sem chamar o modelo. Resend consulta `/domains`,
+sem enviar e-mail; exige chave com permissão para listar domínios.
 
-`DATABASE_URL`, se definido, prevalece sobre os campos `DB_*` e usa o driver
-`postgresql+psycopg`, preservando parâmetros como `sslmode`.
+Banco SQL externo exige um driver compatível com asyncio instalado:
 
 ```python
 external = infra.external_database("postgresql+psycopg://user:password@host/database",
                                    connect_args={"connect_timeout": 10})
-try:
-    external.test_connection()
-finally:
-    external.close()
+async def use_external():
+    try:
+        engine, sessions = await external()
+    finally:
+        await external.close()
 ```
 
-Chamadas HTTP usam `request(method, path, **kwargs)`; caminhos são relativos ao
-serviço para IA/Resend e URLs absolutas para `infra.http`. Validação das fontes
-fornecidas por usuários (permissões, URLs públicas, consultas permitidas e limites
-de dados) deve ocorrer no adapter/caso de uso antes de chamar o transporte.
-
-No encerramento do aplicativo, chame `infra.close()` para liberar o pool principal.
-Conexões retornadas por `database.connect()` devem ser fechadas pelo chamador.
-
-## Verificação local
-
-`python -m unittest discover -s src/backend/tests -v`
-
-Os testes usam SQLite e HTTP simulado, sem acessar serviços de produção.
+Validação de fontes fornecidas pelo usuário (permissões, URLs públicas, consultas
+permitidas e limites) fica no adapter/caso de uso antes de chamar o transporte.
