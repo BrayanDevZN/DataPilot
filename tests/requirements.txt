@@ -1,0 +1,2 @@
+-r ../src/backend/requirements.txt
+aiosqlite>=0.20,<1
