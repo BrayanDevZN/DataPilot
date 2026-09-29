@@ -1,0 +1,88 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Ambiente
+.env
+.env.*
+!.env.example
+
+# Vite
+.vite/
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VS Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# JetBrains
+.idea/
+
+# Coverage
+coverage/
+
+# Arquivos temporários
+tmp/
+temp/
+*.tmp
+
+# Arquivos de backup
+*.bak
+*.old
+*.orig
+
+# ESLint
+.eslintcache
+
+# TypeScript
+*.tsbuildinfo
+
+# Railway
+.railway/
+
+# Uploads locais (caso use)
+uploads/
+
+# Certificados
+*.pem
+*.key
+*.crt
+
+# Banco local
+*.db
+*.sqlite
+*.sqlite3
+
+# Arquivos compactados
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+
+# Mac/Linux
+.AppleDouble
+.LSOverride
+
+# Windows
+ehthumbs.db
