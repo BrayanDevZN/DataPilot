@@ -58,8 +58,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-      additional_contexts:
-        base: service:base
     restart: unless-stopped
     environment:
       <<: *backend-environment
@@ -100,8 +98,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-      additional_contexts:
-        base: service:base
     restart: unless-stopped
     environment:
       <<: *backend-environment
