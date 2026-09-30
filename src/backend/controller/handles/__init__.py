@@ -28,7 +28,7 @@ routers = (
 )
 
 PUBLIC_ROUTES = {
-    "/auth/login",
+    "/auth",
     "/auth/refresh",
     "/auth/logout",
     "/users",
