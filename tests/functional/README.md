@@ -17,18 +17,16 @@ Run the functional suite from the host:
 python tests/functional/routes.py
 ```
 
-The API and Redis are exposed by Compose on localhost, which is also how the
-GitHub Actions functional workflow executes the suite.
+The GitHub Actions workflow starts the stack and lets the Python runner wait
+for the API through HTTP.
 
-Environment overrides:
+Environment override:
 
 ```bash
 FUNCTIONAL_BASE_URL=http://localhost:8000 \
-FUNCTIONAL_REDIS_HOST=localhost \
-FUNCTIONAL_REDIS_PORT=6379 \
 python tests/functional/routes.py
 ```
 
-The suite is intended for `ENVIROIMENT=test`. It seeds only the temporary
-account-verification code directly in Redis; all application behavior after
-that is exercised through HTTP routes.
+The suite is intended for `ENVIROIMENT=test`. Verification-code endpoints
+return the generated code only in test mode, so the functional runner exercises
+the complete flow exclusively through HTTP without reading Redis directly.
