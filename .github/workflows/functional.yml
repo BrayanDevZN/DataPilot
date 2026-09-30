@@ -39,8 +39,22 @@ jobs:
           docker compose build api worker
 
       - name: Prepare sender environment file
+        env:
+          SENDER_EMAIL: ${{ secrets.EMAIL }}
+          SENDER_PASSWORD: ${{ secrets.PASSWORD }}
         run: |
-          touch .env
+          if [ -z "$SENDER_EMAIL" ] || [ -z "$SENDER_PASSWORD" ]; then
+            echo "Missing EMAIL or PASSWORD repository secret for sender-v1"
+            exit 1
+          fi
+
+          cat > .env <<EOF
+          email=$SENDER_EMAIL
+          password=$SENDER_PASSWORD
+          origin=*
+          rate_limit=50
+          global_rate_limit=200
+          EOF
 
       - name: Start sender stack detached
         run: |
