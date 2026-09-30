@@ -1,16 +1,19 @@
 """Authenticated HTTP routes for DataPilot AI agents."""
 
-from typing import Any
+import asyncio
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
 from src.backend.controller.schema.agents import (
     AgentTextResponse,
-    AnalysisAgentRequest,
     ChatAgentRequest,
     ChatIntentAgentRequest,
+    DashboardAgentResponse,
+    DashboardAnalysisRequest,
+    DashboardAnalysisResponse,
     DashboardGeneralAgentRequest,
     DashboardMultiGeneralAgentRequest,
     DashboardMultiSpecificAgentRequest,
@@ -20,7 +23,6 @@ from src.backend.controller.schema.agents import (
     MultiAnalysisAgentRequest,
 )
 from src.backend.service.agents import (
-    AnalysisAgent,
     ChatAgent,
     ChatIntentAgent,
     DashboardGeneralAgent,
@@ -32,13 +34,14 @@ from src.backend.service.agents import (
     MultiAnalysisAgent,
 )
 from src.backend.service.db.repository import control_repository
+from src.backend.service.manage import dashboard_pipeline
+from src.backend.service.source_ingestion import agent_dataset_loader
 
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 _chat_agent = ChatAgent()
 _chat_intent_agent = ChatIntentAgent()
-_analysis_agent = AnalysisAgent()
 _multi_analysis_agent = MultiAnalysisAgent()
 _dashboard_planner_agent = DashboardPlannerAgent()
 _dashboard_general_agent = DashboardGeneralAgent()
@@ -78,18 +81,31 @@ async def run_chat_intent_agent(
     return {"output": output}
 
 
-@router.post("/analysis", response_model=AgentTextResponse)
+@router.post(
+    "/analysis",
+    response_model=DashboardAnalysisResponse,
+)
 async def run_analysis_agent(
-    data: AnalysisAgentRequest,
-    _current_user: dict[str, Any] = Depends(get_current_user),
+    data: DashboardAnalysisRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
 ):
-    output = await _analysis_agent.run(
+    output = await dashboard_pipeline.run_analysis(
+        data.analysis_id,
+        user_id=current_user["user_id"],
         question=data.question,
-        chart=data.chart,
-        interpretation=data.interpretation,
         history=_history(data.history),
     )
-    return {"output": output}
+
+    if output is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dashboard analysis context not found or expired",
+        )
+
+    return {
+        "analysis_id": data.analysis_id,
+        "output": output,
+    }
 
 
 @router.post("/multi-analysis", response_model=AgentTextResponse)
@@ -149,6 +165,82 @@ async def run_data_agent(
         ) from error
 
     return {"output": output}
+
+
+@router.post(
+    "/dashboard",
+    response_model=DashboardAgentResponse,
+)
+async def run_dashboard_agent(
+    prompt: Annotated[str | None, Form(max_length=20_000)] = None,
+    data_source_id: Annotated[int | None, Form(gt=0)] = None,
+    file: Annotated[UploadFile | None, File()] = None,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    if (file is None) == (data_source_id is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide exactly one of file or data_source_id",
+        )
+
+    if file is not None:
+        filename = file.filename or "dataset"
+
+        try:
+            content = await file.read()
+            dataset, _engine = await asyncio.to_thread(
+                agent_dataset_loader.load,
+                filename,
+                content,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(error),
+            ) from error
+        finally:
+            await file.close()
+    else:
+        source = await control_repository(
+            session,
+        ).data_sources.db.get(
+            data_source_id,
+            filters={
+                "user_id": current_user["user_id"],
+            },
+        )
+
+        if not source["found"]:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Data source not found",
+            )
+
+        dataset = source["item"].get("file_data")
+
+        if not isinstance(dataset, list) or not dataset:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Data source does not contain analyzable data",
+            )
+
+    try:
+        return await dashboard_pipeline.generate(
+            dataset,
+            user_id=current_user["user_id"],
+            prompt=prompt,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(error),
+        ) from error
 
 
 @router.post("/dashboard-planner", response_model=AgentTextResponse)
