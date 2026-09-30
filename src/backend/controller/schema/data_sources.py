@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .common import StrictSchema
 
@@ -27,3 +27,11 @@ class DataSourceUpdate(StrictSchema):
     source_type: Literal["file", "web", "database"] | None = None
     connection_config: dict[str, Any] | None = None
     refresh_interval_days: int | None = Field(default=None, ge=1, le=3650)
+
+    @model_validator(mode="after")
+    def reject_null_required_fields(self):
+        nullable = {"refresh_interval_days"}
+        for field in self.model_fields_set - nullable:
+            if getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
