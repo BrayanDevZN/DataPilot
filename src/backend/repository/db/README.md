@@ -25,3 +25,21 @@ inferida; os códigos foram representados como `String(6)` para preservar zeros.
 Os dados/configurações dos gráficos e fontes usam JSONB. Datas usam TIMESTAMP sem
 fuso, como as migrations existentes. `onupdate=func.now()` atua nas atualizações
 feitas pelo SQLAlchemy; não cria um trigger no banco.
+
+## Criação das tabelas
+
+`Migration` recebe um `AsyncEngine` e carrega todos os models antes de executar
+`Base.metadata.create_all` via `run_sync`, dentro de `engine.begin()`:
+
+```python
+from src.backend.repository.db.migrate import Migration
+
+# engine é o AsyncEngine obtido pela infraestrutura.
+await Migration(engine)()
+```
+
+O `__call__` coordena `create_tables()` e `load_models()`. Todas as etapas registram
+logs; falhas são propagadas. A classe usa o engine recebido e não o encerra.
+`checkfirst=True` evita recriar tabelas existentes. Este processo cria tabelas
+ausentes, mas não altera colunas ou constraints de tabelas existentes; evolução
+versionada do esquema exige migrations específicas.
