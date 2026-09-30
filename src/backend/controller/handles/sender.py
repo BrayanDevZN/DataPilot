@@ -35,9 +35,12 @@ async def _issue_and_send(
 
     try:
         await send(email, code)
-    except Exception:
+    except Exception as error:
         await verification_codes.delete(email_type, email)
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(error),
+        ) from error
 
     return code
 
