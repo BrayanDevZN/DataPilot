@@ -20,3 +20,10 @@ async def update(session: AsyncSession, identifier: str, value, data: dict) -> d
 async def delete(session: AsyncSession, user_id: int) -> dict:
     result = delete_user.apply_async(args=[user_id], queue="database")
     return {"accepted": True, "task_id": result.id}
+
+
+class Users:
+    create = staticmethod(create)
+    get = staticmethod(get)
+    update = staticmethod(update)
+    delete = staticmethod(delete)
