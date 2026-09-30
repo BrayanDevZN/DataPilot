@@ -82,8 +82,6 @@ services:
       - test
     environment:
       FUNCTIONAL_BASE_URL: http://api:8000
-      FUNCTIONAL_REDIS_HOST: redis
-      FUNCTIONAL_REDIS_PORT: 6379
     volumes:
       - ./tests:/app/tests:ro
     command: ["python", "tests/functional/routes.py"]
