@@ -79,7 +79,7 @@ class Cache:
         result = await self.redis.eval(script, 1, key, expected)
         return {
             "consumed": int(result) == 1,
-            "found": int(result) ~= 0,
+            "found": int(result) != 0,
         }
 
     @log_operation
