@@ -1,12 +1,14 @@
 """Public account-verification routes."""
 
 from secrets import randbelow
-from typing import Any
-
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_session
+from src.backend.controller.schema.validation_account import (
+    ValidationAccountConsume,
+    ValidationAccountIssue,
+)
 from src.backend.service.db.repository import control_repository
 
 
@@ -22,12 +24,10 @@ def _code() -> str:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def issue_account_validation(
-    data: dict[str, Any] = Body(...),
+    data: ValidationAccountIssue,
     session: AsyncSession = Depends(get_session),
 ):
-    email = str(data.get("email") or "").strip().lower()
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
+    email = data.email.strip().lower()
 
     try:
         result = await control_repository(
@@ -45,17 +45,11 @@ async def issue_account_validation(
 
 @router.post("/consume")
 async def consume_account_validation(
-    data: dict[str, Any] = Body(...),
+    data: ValidationAccountConsume,
     session: AsyncSession = Depends(get_session),
 ):
-    email = str(data.get("email") or "").strip().lower()
-    number = str(data.get("number") or "").strip()
-
-    if not email or not number:
-        raise HTTPException(
-            status_code=400,
-            detail="Email and verification code are required",
-        )
+    email = data.email.strip().lower()
+    number = data.number
 
     try:
         result = await control_repository(
