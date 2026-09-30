@@ -81,6 +81,7 @@ class DashboardMultiSpecificAgentRequest(DashboardMultiGeneralAgentRequest):
 
 class DashboardAgentResponse(StrictSchema):
     analysis_id: UUID
+    user_order: str | None = None
     charts: list[dict[str, Any]]
     engine: Literal["polars", "spark"]
     analysis_expires_in: int = Field(gt=0)
