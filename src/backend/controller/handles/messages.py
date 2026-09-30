@@ -2,10 +2,11 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
+from src.backend.controller.schema.messages import MessageCreate, MessageUpdate
 from src.backend.service.db.repository import control_repository
 from src.backend.service.manage import control_db
 
@@ -54,20 +55,13 @@ async def list_messages(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_message(
-    data: dict[str, Any] = Body(...),
+    data: MessageCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    try:
-        conversation_id = int(data.get("conversation_id"))
-    except (TypeError, ValueError) as error:
-        raise HTTPException(
-            status_code=400,
-            detail="conversation_id is required",
-        ) from error
-
-    role = str(data.get("role") or "").strip()
-    content = str(data.get("content") or "").strip()
+    conversation_id = data.conversation_id
+    role = data.role
+    content = data.content
 
     try:
         result = await control_repository(
@@ -100,16 +94,13 @@ async def get_message(
 @router.patch("/{message_id}")
 async def update_message(
     message_id: int,
-    data: dict[str, Any] = Body(...),
+    data: MessageUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     await _owned_message(session, message_id, current_user["user_id"])
 
-    payload = dict(data)
-    for field in ("id", "conversation_id", "created_at"):
-        payload.pop(field, None)
-
+    payload = data.model_dump(exclude_unset=True)
     if not payload:
         raise HTTPException(status_code=400, detail="No editable fields provided")
 
