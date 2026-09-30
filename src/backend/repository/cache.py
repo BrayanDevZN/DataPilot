@@ -44,9 +44,43 @@ class Cache:
         return {"added": added}
 
     @log_operation
-    async def set(self, key: str, value: str | int | float) -> dict[str, bool]:
-        result = await self._execute(key, lambda pipeline: pipeline.set(key, value, ex=self.ttl))
+    async def set(
+        self,
+        key: str,
+        value: str | int | float,
+        expire: int | None = None,
+    ) -> dict[str, bool]:
+        ttl = self.ttl if expire is None else expire
+        if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl <= 0:
+            raise ValueError("Expire time must be a positive integer")
+        result = await self._execute(
+            key,
+            lambda pipeline: pipeline.set(key, value, ex=ttl),
+        )
         return {"set": bool(result)}
+
+    @log_operation
+    async def consume(self, key: str, expected: str) -> dict[str, bool]:
+        if not isinstance(expected, str) or not expected:
+            raise ValueError("Provide the expected cache value")
+
+        script = """
+        local current = redis.call('GET', KEYS[1])
+        if not current then
+            return 0
+        end
+        if current ~= ARGV[1] then
+            return -1
+        end
+        redis.call('DEL', KEYS[1])
+        return 1
+        """
+
+        result = await self.redis.eval(script, 1, key, expected)
+        return {
+            "consumed": int(result) == 1,
+            "found": int(result) ~= 0,
+        }
 
     @log_operation
     async def incr(self, key: str, amount: int = 1) -> dict[str, int]:
