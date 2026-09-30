@@ -164,18 +164,13 @@ export async function getDataSource(_token, data_source_id) {
   );
 }
 
-export async function getLinkedDashboards(token, data_source_id) {
+export async function getLinkedDashboards(_token, data_source_id) {
   return safeFetch(
-    `${ACCOUNTS_URL}/data-source/linked-dashboards`,
+    `${ACCOUNTS_URL}/data-sources/linked-dashboards?data_source_id=${Number(
+      data_source_id
+    )}`,
     {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        token,
-        data_source_id: Number(data_source_id),
-      }),
+      method: "GET",
     },
     "Erro ao buscar dashboards vinculados."
   );
