@@ -137,7 +137,10 @@ class DashboardAgentPipeline:
         user_id: int,
         prompt: str | None = None,
     ) -> dict[str, Any]:
-        tools = AgentDataTools(data)
+        tools = await asyncio.to_thread(
+            AgentDataTools,
+            data,
+        )
         schema = await asyncio.to_thread(
             tools.dataset_schema
         )
