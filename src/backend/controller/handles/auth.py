@@ -62,6 +62,7 @@ async def login(
         repository = control_repository(session)
 
         if data.code is None:
+            response.status_code = status.HTTP_202_ACCEPTED
             code = _code()
 
             await repository.validation.db.issue(
@@ -134,9 +135,9 @@ async def logout(
     response: Response,
 ):
     try:
-        claims = await consume_refresh_token(request)
+        await consume_refresh_token(request)
     except HTTPException:
-        claims = None
+        pass
 
     # The refresh token was consumed atomically by consume_refresh_token.
     clear_session_cookies(response)
