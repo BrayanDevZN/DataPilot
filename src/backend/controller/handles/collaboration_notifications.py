@@ -38,7 +38,7 @@ async def _owned_notification(
     return result["item"]
 
 
-@router.get("")
+@router.get("/")
 async def list_notifications(
     limit: int = Query(30, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -54,7 +54,7 @@ async def list_notifications(
     )
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def create_notification(
     data: CollaborationNotificationCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -98,9 +98,9 @@ async def get_notification(
     )
 
 
-@router.patch("/{notification_id}")
+@router.patch("/")
 async def update_notification(
-    notification_id: int,
+    notification_id: int = Query(..., gt=0),
     data: CollaborationNotificationUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -124,9 +124,9 @@ async def update_notification(
     return result["item"]
 
 
-@router.delete("/{notification_id}")
+@router.delete("/")
 async def delete_notification(
-    notification_id: int,
+    notification_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
