@@ -169,8 +169,8 @@ class DataPilotFunctionalRoutes(unittest.TestCase):
 
         self.assertTrue(payload["authenticated"])
         self.assertFalse(payload["auth2_required"])
-        self.assertIn("access_token", self.session.cookies)
-        self.assertIn("refresh_token", self.session.cookies)
+        self.assertIn("X-token_user", self.session.cookies)
+        self.assertIn("X-refresh_user", self.session.cookies)
 
         set_cookie = response.headers.get("set-cookie", "").lower()
         self.assertIn("httponly", set_cookie)
@@ -377,15 +377,15 @@ class DataPilotFunctionalRoutes(unittest.TestCase):
         self.assert_status(response, 200)
 
     def test_11_refresh_rotates_session(self) -> None:
-        old_access = self.session.cookies.get("access_token")
-        old_refresh = self.session.cookies.get("refresh_token")
+        old_access = self.session.cookies.get("X-token_user")
+        old_refresh = self.session.cookies.get("X-refresh_user")
 
         response = self.request("POST", "/auth/refresh")
         self.assert_status(response, 200)
         self.assertTrue(response.json()["authenticated"])
 
-        new_access = self.session.cookies.get("access_token")
-        new_refresh = self.session.cookies.get("refresh_token")
+        new_access = self.session.cookies.get("X-token_user")
+        new_refresh = self.session.cookies.get("X-refresh_user")
 
         self.assertTrue(new_access)
         self.assertTrue(new_refresh)
@@ -425,8 +425,8 @@ class DataPilotFunctionalRoutes(unittest.TestCase):
         self.assert_status(response, 200)
         self.assertTrue(response.json()["logged_out"])
 
-        self.assertIsNone(self.session.cookies.get("access_token"))
-        self.assertIsNone(self.session.cookies.get("refresh_token"))
+        self.assertIsNone(self.session.cookies.get("X-token_user"))
+        self.assertIsNone(self.session.cookies.get("X-refresh_user"))
 
         response = self.request("GET", "/users/")
         self.assert_status(response, 401)
