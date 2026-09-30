@@ -74,8 +74,8 @@ async def get_data_source(
 
 @router.patch("/")
 async def update_data_source(
-    data_source_id: int = Query(..., gt=0),
     data: DataSourceUpdate,
+    data_source_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
