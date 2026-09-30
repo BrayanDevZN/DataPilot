@@ -1,12 +1,12 @@
 """Schemas for account verification routes."""
 
-from pydantic import Field, field_validator
+from pydantic import EmailStr, Field, field_validator
 
 from .common import StrictSchema
 
 
 class ValidationAccountIssue(StrictSchema):
-    email: str = Field(min_length=3, max_length=320)
+    email: EmailStr
 
 
 class ValidationAccountConsume(ValidationAccountIssue):
