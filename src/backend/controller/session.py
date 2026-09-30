@@ -44,7 +44,7 @@ def create_auth2_user_cookie(
         expires=expires_at,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         path="/sender/auth2",
     )
 
@@ -56,7 +56,7 @@ def clear_auth2_user_cookie(response: Response) -> None:
         AUTH2_USER_COOKIE,
         path="/sender/auth2",
         httponly=True,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         secure=settings.cookie_secure,
     )
 
@@ -143,7 +143,7 @@ async def create_session(
         expires=access_exp,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         path="/",
     )
     response.set_cookie(
@@ -153,7 +153,7 @@ async def create_session(
         expires=refresh_exp,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         path="/",
     )
 
@@ -218,13 +218,13 @@ def clear_session_cookies(response: Response) -> None:
         ACCESS_COOKIE,
         path="/",
         httponly=True,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         secure=settings.cookie_secure,
     )
     response.delete_cookie(
         REFRESH_COOKIE,
         path="/",
         httponly=True,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         secure=settings.cookie_secure,
     )
