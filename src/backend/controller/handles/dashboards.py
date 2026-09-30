@@ -106,8 +106,8 @@ async def get_dashboard(
 
 @router.patch("/")
 async def update_dashboard(
-    dashboard_id: int = Query(..., gt=0),
     data: DashboardUpdate,
+    dashboard_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
