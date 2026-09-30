@@ -18,3 +18,10 @@ async def update(session: AsyncSession, identifier: str, value, data: dict) -> d
 
 async def delete(session: AsyncSession, identifier: str, value) -> dict:
     return await ControlDb(redis.client, session).validation_account.delete(identifier, value)
+
+
+class ValidationAccount:
+    create = staticmethod(create)
+    get = staticmethod(get)
+    update = staticmethod(update)
+    delete = staticmethod(delete)
