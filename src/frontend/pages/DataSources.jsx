@@ -1057,6 +1057,16 @@ export default function DataSources() {
                   </div>
                 </div>
 
+                {selectedSource.source_type === "database" &&
+                  selectedSource.sql_query && (
+                    <div className="data-source-details-card">
+                      <div>
+                        <h3>Consulta SQL salva</h3>
+                        <pre>{selectedSource.sql_query}</pre>
+                      </div>
+                    </div>
+                  )}
+
                 <div className="data-source-preview-card">
                   <div className="data-source-preview-header">
                     <h3>Prévia dos dados</h3>
