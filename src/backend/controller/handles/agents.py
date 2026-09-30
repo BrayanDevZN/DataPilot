@@ -189,7 +189,7 @@ async def run_dashboard_agent(
 
         try:
             content = await file.read()
-            dataset, _engine = await asyncio.to_thread(
+            dataset, _ = await asyncio.to_thread(
                 agent_dataset_loader.load,
                 filename,
                 content,
