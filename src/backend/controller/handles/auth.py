@@ -17,7 +17,6 @@ from src.backend.controller.session import (
     clear_session_cookies,
     create_session,
     consume_refresh_token,
-    revoke_refresh,
 )
 from src.backend.service.db.repository import control_repository
 from src.backend.service.manage import control_db, hash, sender
@@ -111,7 +110,6 @@ async def refresh(
     )
 
     if user is None:
-        await revoke_refresh(claims)
         clear_session_cookies(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -140,8 +138,6 @@ async def logout(
     except HTTPException:
         claims = None
 
-    if claims is not None:
-        await revoke_refresh(claims)
-
+    # The refresh token was consumed atomically by consume_refresh_token.
     clear_session_cookies(response)
     return {"logged_out": True}
