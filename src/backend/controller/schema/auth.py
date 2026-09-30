@@ -29,6 +29,7 @@ class LoginRequest(StrictSchema):
 class LoginResponse(StrictSchema):
     authenticated: bool
     auth2_required: bool = False
+    message: str | None = None
     access_expires_at: int | None = None
     refresh_expires_at: int | None = None
     user: UserResponse | None = None
