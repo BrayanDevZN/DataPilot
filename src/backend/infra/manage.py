@@ -3,7 +3,7 @@
 from src.backend.logs.log import logger, log_operation
 
 from .connection.database import PostgreSQLConnection, SQLConnection
-from .connection.email import ResendConnection
+from .sender import Sender
 from .core.config import Settings
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -17,9 +17,9 @@ class Infrastructure:
             username=settings.db_user, password=settings.db_password,
             database_url=settings.database_url, connect_timeout=settings.db_connect_timeout,
         )
-        self.email = ResendConnection(settings.key_email, base_url=settings.resend_url,
-                                      timeout=settings.email_timeout)
-        logger.info("Infraestrutura pronta: PostgreSQL e Resend")
+        self.sender = Sender(settings.email_user, settings.email_password,
+                             timeout=settings.email_timeout)
+        logger.info("Infraestrutura pronta: PostgreSQL e Sender")
 
     @log_operation
     def external_database(self, url: str, *, connect_args: dict | None = None) -> SQLConnection:
@@ -34,6 +34,7 @@ class Infrastructure:
 settings = Settings.from_env()
 infra = Infrastructure(settings)
 database = infra.database
+sender = infra.sender
 
 
 @log_operation

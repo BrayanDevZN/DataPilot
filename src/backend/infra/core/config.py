@@ -44,9 +44,8 @@ class Settings:
     db_port: int = 5432
     db_connect_timeout: int = 10
     email_timeout: int = 30
-    resend_url: str = "https://api.resend.com"
-    key_email: str | None = field(default=None, repr=False)
-    email_user: str = "DataPilot <no-reply@datapilotplataform.com>"
+    email_user: str | None = field(default=None, repr=False)
+    email_password: str | None = field(default=None, repr=False)
     url_email: str | None = None
     secret: str | None = field(default=None, repr=False)
     sing: str | None = field(default=None, repr=False)
@@ -65,9 +64,8 @@ class Settings:
             db_port=positive_int("DB_PORT", 5432),
             db_connect_timeout=positive_int("DB_CONNECT_TIMEOUT", 10),
             email_timeout=positive_int("EMAIL_TIMEOUT", 30),
-            resend_url=os.getenv("RESEND_URL", cls.resend_url),
-            key_email=os.getenv("KEY_EMAIL"),
-            email_user=os.getenv("EMAIL_USER", cls.email_user),
+            email_user=os.getenv("EMAIL_USER"),
+            email_password=os.getenv("EMAIL_PASSWORD"),
             url_email=os.getenv("URL_EMAIL"),
             secret=os.getenv("SECRET"),
             sing=os.getenv("SING"),

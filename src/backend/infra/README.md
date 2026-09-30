@@ -59,11 +59,19 @@ importam esta camada. Sessões não devem ser compartilhadas entre requisições
 | Classe | Método de teste | Método que testa e retorna o objeto |
 | --- | --- | --- |
 | `SQLConnection` | `await connection.test()` | `await connection()` retorna engine e fábrica |
-| `ResendConnection` | `infra.email.test()` | `infra.email()` |
 
-Resend usa transporte síncrono; os objetos SQL são assíncronos. O teste do Resend
-consulta `/domains` sem enviar e-mail e exige resposta 2xx e chave com permissão
-para listar domínios. `EMAIL_TIMEOUT` configura o timeout desse transporte.
+`manage.py` disponibiliza o objeto `sender`, configurado por `EMAIL_USER`,
+`EMAIL_PASSWORD` e `EMAIL_TIMEOUT`. Para Gmail, use uma senha de aplicativo.
+O envio usa yagmail em uma thread para preservar o loop assíncrono, com um cliente
+independente por chamada, encerrado ao concluir ou falhar. A importação não envia
+mensagens. Erros de SMTP são propagados e logs não incluem credenciais nem conteúdo.
+
+```python
+from src.backend.infra.manage import sender
+
+async def notify():
+    return await sender.send("destinatario@example.com", "Assunto", "Mensagem")
+```
 
 Banco SQL externo exige um driver compatível com asyncio instalado:
 

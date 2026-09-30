@@ -1,7 +1,7 @@
 """Run from the project root: python tests/unit/infra.py.
 
 Install first: pip install -r tests/requirements.txt.
-Uses in-memory SQLite and mocked Resend, without production access.
+Uses in-memory SQLite and mocked yagmail, without production access.
 """
 
 import os
@@ -26,9 +26,13 @@ class InfraTests(unittest.IsolatedAsyncioTestCase):
     def test_configuration(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / ".env").write_text("DB_NAME=root_database\n", encoding="utf-8")
+            (root / ".env").write_text("DB_NAME=root_database\nEMAIL_USER=sender@example.com\nEMAIL_PASSWORD=test-password\n", encoding="utf-8")
             with patch.dict(os.environ, {}, clear=True):
-                self.assertEqual(Settings.from_env(root).db_name, "root_database")
+                settings = Settings.from_env(root)
+                self.assertEqual(settings.db_name, "root_database")
+                self.assertEqual(settings.email_user, "sender@example.com")
+                self.assertEqual(settings.email_password, "test-password")
+                self.assertNotIn("test-password", repr(settings))
 
             local = root / "src/backend/infra/core/.env"
             local.parent.mkdir(parents=True)
@@ -56,17 +60,25 @@ class InfraTests(unittest.IsolatedAsyncioTestCase):
             await connection.close()
             await infrastructure.close()
 
-    def test_resend(self):
-        infrastructure = Infrastructure(Settings(key_email="unit-test-key"))
-        with patch("src.backend.infra.connection.email.requests.Session") as mocked:
+    async def test_sender(self):
+        import threading
+        infrastructure = Infrastructure(Settings(email_user="sender@example.com", email_password="test-password"))
+        main_thread = threading.get_ident()
+        with patch("src.backend.infra.sender.yagmail.SMTP") as mocked:
             client = mocked.return_value.__enter__.return_value
-            client.request.return_value.status_code = 200
-            self.assertIs(infrastructure.email(), infrastructure.email)
-            client.request.assert_called_once_with(
-                "GET", "https://api.resend.com/domains",
-                headers={"Authorization": "Bearer unit-test-key"}, timeout=30,
-            )
-            client.request.return_value.raise_for_status.assert_called_once()
+            threads = []
+            client.send.side_effect = lambda **kwargs: threads.append(threading.get_ident())
+            self.assertEqual(await infrastructure.sender.send("to@example.com", "Subject", "Body"), {"sent": True})
+            mocked.assert_called_once_with(user="sender@example.com", password="test-password", timeout=30)
+            client.send.assert_called_once_with(to="to@example.com", subject="Subject", contents="Body")
+            mocked.return_value.__exit__.assert_called_once()
+            self.assertNotEqual(threads[0], main_thread)
+            client.send.side_effect = RuntimeError("SMTP error")
+            with self.assertRaises(RuntimeError):
+                await infrastructure.sender.send("to@example.com", "Subject", "Body")
+            self.assertEqual(mocked.return_value.__exit__.call_count, 2)
+        with self.assertRaises(ValueError):
+            await Infrastructure(Settings()).sender.send("to@example.com", "Subject", "Body")
 
     def test_logger(self):
         from logging import StreamHandler
