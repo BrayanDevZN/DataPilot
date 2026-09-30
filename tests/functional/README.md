@@ -11,17 +11,14 @@ Start the backend:
 docker compose up --build -d
 ```
 
-Run the functional suite:
-
-```bash
-docker compose --profile test run --rm functional-tests
-```
-
-Or run the suite directly from the host:
+Run the functional suite from the host:
 
 ```bash
 python tests/functional/routes.py
 ```
+
+The API and Redis are exposed by Compose on localhost, which is also how the
+GitHub Actions functional workflow executes the suite.
 
 Environment overrides:
 
