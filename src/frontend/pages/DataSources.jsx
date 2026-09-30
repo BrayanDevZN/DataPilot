@@ -22,6 +22,7 @@ import {
   getLinkedDashboards,
   updateDataSource,
   deleteDataSource,
+  executeSqlDataSource,
 } from "../api/dataSourceApi";
 
 import {
@@ -120,6 +121,7 @@ export default function DataSources() {
   const [loadingDelete, setLoadingDelete] = useState(false);
   const [loadingLinkedDashboards, setLoadingLinkedDashboards] = useState(false);
   const [loadingRefreshDashboards, setLoadingRefreshDashboards] = useState(false);
+  const [loadingExecuteSql, setLoadingExecuteSql] = useState(false);
 
   const [error, setError] = useState("");
 
@@ -385,6 +387,37 @@ export default function DataSources() {
       toast.error(err.message || "Fontes agendadas foram atualizadas; revise dashboards pendentes.");
     } finally {
       setLoadingRefreshDashboards(false);
+    }
+  }
+
+  async function handleExecuteSavedSql() {
+    if (!selectedSource?.id || selectedSource.source_type !== "database") {
+      return;
+    }
+
+    try {
+      setLoadingExecuteSql(true);
+      setError("");
+
+      const response = await executeSqlDataSource({
+        data_source_id: selectedSource.id,
+      });
+
+      const updatedSource = response?.data_source;
+
+      if (updatedSource) {
+        setSelectedSource(updatedSource);
+        addOrReplaceDataSource(updatedSource);
+      }
+
+      toast.success("Consulta SQL executada e dados atualizados.");
+    } catch (err) {
+      const message =
+        err.message || "Erro ao executar a consulta SQL salva.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setLoadingExecuteSql(false);
     }
   }
 
@@ -933,11 +966,23 @@ export default function DataSources() {
           </div>
 
           <div className="data-sources-actions">
+            {selectedSource?.source_type === "database" && (
+              <button
+                type="button"
+                className="data-source-secondary-button"
+                onClick={handleExecuteSavedSql}
+                disabled={loadingExecuteSql}
+              >
+                <RefreshCcw size={18} />
+                {loadingExecuteSql ? "Executando..." : "Executar consulta"}
+              </button>
+            )}
+
             <button
               type="button"
               className="data-source-secondary-button"
               onClick={openUpdateModal}
-              disabled={!selectedSource}
+              disabled={!selectedSource || loadingExecuteSql}
             >
               <RefreshCcw size={18} />
               Atualizar fonte
