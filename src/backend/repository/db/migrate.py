@@ -33,6 +33,7 @@ class Migration:
             migration_files = (
                 ("public_ids.sql", "Garantindo public_id UUID em users e dashboards"),
                 ("users_auth2.sql", "Garantindo coluna auth2 em users"),
+                ("data_sources_sql_query.sql", "Garantindo sql_query em data_sources"),
             )
             for file_name, message in migration_files:
                 statements = (
