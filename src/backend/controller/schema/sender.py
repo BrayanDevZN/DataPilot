@@ -19,10 +19,6 @@ class ChangePasswordEmailRequest(SenderBaseRequest):
     pass
 
 
-class Auth2EmailRequest(SenderBaseRequest):
-    pass
-
-
 class SenderResponse(StrictSchema):
     sent: bool
     type: Literal["create_account", "change_password", "auth2"]
