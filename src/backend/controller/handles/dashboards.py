@@ -2,10 +2,11 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
+from src.backend.controller.schema.dashboards import DashboardCreate, DashboardUpdate
 from src.backend.service.db.repository import control_repository
 from src.backend.service.manage import control_db
 
@@ -64,19 +65,11 @@ async def list_dashboards(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_dashboard(
-    data: dict[str, Any] = Body(...),
+    data: DashboardCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    payload = dict(data)
-    for field in (
-        "id",
-        "public_id",
-        "user_id",
-        "created_at",
-        "updated_at",
-    ):
-        payload.pop(field, None)
+    payload = data.model_dump()
 
     await _validate_source(
         session,
@@ -114,21 +107,13 @@ async def get_dashboard(
 @router.patch("/{dashboard_id}")
 async def update_dashboard(
     dashboard_id: int,
-    data: dict[str, Any] = Body(...),
+    data: DashboardUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     await _owned_dashboard(session, dashboard_id, current_user["user_id"])
 
-    payload = dict(data)
-    for field in (
-        "id",
-        "public_id",
-        "user_id",
-        "created_at",
-        "updated_at",
-    ):
-        payload.pop(field, None)
+    payload = data.model_dump(exclude_unset=True)
 
     if "data_source_id" in payload:
         await _validate_source(
