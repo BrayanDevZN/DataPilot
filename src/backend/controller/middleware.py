@@ -101,19 +101,25 @@ class Middleware(BaseHTTPMiddleware):
 
     def _private_identity(self, request: Request) -> str:
         """Prefer a validated JWT user identity for private routes."""
-        authorization = request.headers.get("authorization", "")
-        scheme, _, token = authorization.partition(" ")
+        token = request.cookies.get("access_token")
 
-        if scheme.lower() == "bearer" and token.strip():
+        if not token:
+            authorization = request.headers.get("authorization", "")
+            scheme, _, bearer = authorization.partition(" ")
+            if scheme.lower() == "bearer" and bearer.strip():
+                token = bearer.strip()
+
+        if token:
             try:
-                claims = jwt.read(token.strip())
+                claims = jwt.read(token)
             except InvalidTokenError:
                 return f"token:{self._token_fingerprint(token)}"
 
-            for claim in ("public_id", "user_id", "sub"):
-                value = claims.get(claim)
-                if value is not None:
-                    return str(value)
+            if claims.get("token_type") == "access":
+                for claim in ("public_id", "user_id", "sub"):
+                    value = claims.get(claim)
+                    if value is not None:
+                        return str(value)
 
             return f"token:{self._token_fingerprint(token)}"
 
