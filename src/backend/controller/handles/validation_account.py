@@ -10,6 +10,7 @@ from src.backend.controller.schema.validation_account import (
     ValidationAccountIssue,
 )
 from src.backend.service.db.repository import control_repository
+from src.backend.service.manage import sender
 
 
 router = APIRouter(
@@ -29,10 +30,13 @@ async def issue_account_validation(
 ):
     email = data.email.strip().lower()
 
+    code = _code()
+
     try:
         result = await control_repository(
             session,
-        ).validation_account.db.issue(email, _code())
+        ).validation_account.db.issue(email, code)
+        await sender.create_account(email, code)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
