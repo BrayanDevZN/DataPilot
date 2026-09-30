@@ -30,19 +30,25 @@ class Migration:
         logger.info("Criando tabelas ausentes no banco")
         async with self._engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all, checkfirst=True)
-            migration_files = (
-                ("public_ids.sql", "Garantindo public_id UUID em users e dashboards"),
-                ("users_auth2.sql", "Garantindo coluna auth2 em users"),
-                ("data_sources_sql_query.sql", "Garantindo sql_query em data_sources"),
-            )
-            for file_name, message in migration_files:
-                statements = (
-                    Path(__file__).resolve().parent / file_name
-                ).read_text(encoding="utf-8")
-                logger.info(message)
-                for statement in statements.split(";"):
-                    if statement.strip():
-                        await connection.execute(text(statement))
+            if connection.dialect.name == "postgresql":
+                migration_files = (
+                    ("public_ids.sql", "Garantindo public_id UUID em users e dashboards"),
+                    ("users_auth2.sql", "Garantindo coluna auth2 em users"),
+                    ("data_sources_sql_query.sql", "Garantindo sql_query em data_sources"),
+                )
+                for file_name, message in migration_files:
+                    statements = (
+                        Path(__file__).resolve().parent / file_name
+                    ).read_text(encoding="utf-8")
+                    logger.info(message)
+                    for statement in statements.split(";"):
+                        if statement.strip():
+                            await connection.execute(text(statement))
+            else:
+                logger.info(
+                    "Banco %s: migrations SQL específicas de PostgreSQL ignoradas",
+                    connection.dialect.name,
+                )
         logger.info("Criação das tabelas concluída")
 
     @log_operation
