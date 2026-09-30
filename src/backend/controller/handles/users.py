@@ -23,7 +23,7 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.post(
-    "",
+    "/",
     status_code=status.HTTP_201_CREATED,
     response_model=LoginResponse,
 )
@@ -67,14 +67,14 @@ async def create_user(
     return await create_session(response, user)
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/", response_model=UserResponse)
 async def get_me(
     current_user: dict[str, Any] = Depends(get_current_user),
 ):
     return current_user
 
 
-@router.patch("/me", response_model=UserResponse)
+@router.patch("/", response_model=UserResponse)
 async def update_me(
     data: UserUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -104,7 +104,7 @@ async def update_me(
     return _public_user(user)
 
 
-@router.delete("/me", status_code=status.HTTP_202_ACCEPTED)
+@router.delete("/", status_code=status.HTTP_202_ACCEPTED)
 async def delete_me(
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
