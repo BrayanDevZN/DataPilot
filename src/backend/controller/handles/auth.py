@@ -16,7 +16,7 @@ from src.backend.controller.schema.auth import (
 from src.backend.controller.session import (
     clear_session_cookies,
     create_session,
-    read_refresh_token,
+    consume_refresh_token,
     revoke_refresh,
 )
 from src.backend.service.db.repository import control_repository
@@ -102,7 +102,7 @@ async def refresh(
     response: Response,
     session: AsyncSession = Depends(get_session),
 ):
-    claims = await read_refresh_token(request)
+    claims = await consume_refresh_token(request)
 
     user = await control_db.users.get(
         session,
@@ -118,7 +118,6 @@ async def refresh(
             detail="Refresh token user does not exist",
         )
 
-    await revoke_refresh(claims)
     session_data = await create_session(response, user)
 
     return {
@@ -137,7 +136,7 @@ async def logout(
     response: Response,
 ):
     try:
-        claims = await read_refresh_token(request)
+        claims = await consume_refresh_token(request)
     except HTTPException:
         claims = None
 
