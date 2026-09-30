@@ -6,7 +6,9 @@ from src.backend.infra.manage import settings
 
 ACCESS_TOKEN_TTL = timedelta(hours=12)
 REFRESH_TOKEN_TTL = timedelta(days=30)
+AUTH2_USER_TTL = timedelta(minutes=5)
 
 hash = PasswordHash()
 jwt = JWT(settings.sing, expires_in=ACCESS_TOKEN_TTL)
 refresh_jwt = JWT(settings.sing, expires_in=REFRESH_TOKEN_TTL)
+auth2_jwt = JWT(settings.sing, expires_in=AUTH2_USER_TTL)
