@@ -7,11 +7,16 @@ from src.backend.logs.log import logger, log_operation
 
 class PromptFiles:
     NAMES = (
-        "dashboard_planner",
-        "chart_interpreter",
-        "chat_agent",
-        "dashboard_analysis",
-        "dashboard_multi_analysis",
+        "interpreter_dashboard_plan",
+        "interpreter_chat",
+        "interpreter_analysis",
+        "generator_chat",
+        "generator_analysis",
+        "generator_analysis_multi",
+        "generator_dashboard_general",
+        "generator_dashboard_specific",
+        "generator_dashboard_multi_general",
+        "generator_dashboard_multi_specific",
     )
 
     @log_operation
@@ -30,22 +35,7 @@ class PromptFiles:
     def read_all(self) -> dict[str, str]:
         return {name: self.read(name) for name in self.NAMES}
 
-    @property
-    def dashboard_planner(self) -> str:
-        return self.read("dashboard_planner")
-
-    @property
-    def chart_interpreter(self) -> str:
-        return self.read("chart_interpreter")
-
-    @property
-    def chat_agent(self) -> str:
-        return self.read("chat_agent")
-
-    @property
-    def dashboard_analysis(self) -> str:
-        return self.read("dashboard_analysis")
-
-    @property
-    def dashboard_multi_analysis(self) -> str:
-        return self.read("dashboard_multi_analysis")
+    def __getattr__(self, name: str) -> str:
+        if name in self.NAMES:
+            return self.read(name)
+        raise AttributeError(name)
