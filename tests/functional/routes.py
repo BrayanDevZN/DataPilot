@@ -146,13 +146,17 @@ def main() -> None:
         200,
         json={"name": "Functional Updated"},
     )
-    call(
+    change_password = call(
         session,
         "POST",
         "/sender/change-password",
         202,
         json={"email": email},
-    )
+    ).json()
+    if not change_password.get("code"):
+        raise RuntimeError(
+            "sender/change-password did not return code in test mode"
+        )
 
     csv_data = (
         "produto,valor,quantidade\n"
@@ -610,6 +614,7 @@ def main() -> None:
         202,
     )
 
+    call(collaborator_session, "DELETE", "/users/", 202)
     call(session, "POST", "/auth/logout", 200)
     call(session, "GET", "/users/", 401)
 
