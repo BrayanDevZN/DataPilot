@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.backend.controller.dependencies import get_current_user, get_session
 from src.backend.controller.schema.validation import ValidationConsume
 from src.backend.service.db.repository import control_repository
+from src.backend.service.manage import sender
 
 
 router = APIRouter(prefix="/validation", tags=["validation"])
@@ -23,10 +24,13 @@ async def issue_validation(
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    code = _code()
+
     try:
         result = await control_repository(
             session,
-        ).validation.db.issue(current_user["user_id"], _code())
+        ).validation.db.issue(current_user["user_id"], code)
+        await sender.change_password(current_user["email"], code)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
