@@ -6,8 +6,9 @@ from .connection.celery import CeleryConnection
 from .connection.database import PostgreSQLConnection, SQLConnection
 from .connection.redis import RedisConnection
 from .sender import Sender
-from .core.config import Settings
-from .core.file import EmailFiles
+from .core.config.settings import Settings
+from .core.sender.file import EmailFiles
+from .core.prompts.prompt import PromptFiles
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 
@@ -16,6 +17,7 @@ class Infrastructure:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.email_files = EmailFiles()
+        self.prompts = PromptFiles()
         self.redis = RedisConnection()
         self.celery_connection = CeleryConnection(
             broker=settings.celery_broker_url,
@@ -51,6 +53,7 @@ celery_connection = infra.celery_connection
 celery = infra.celery
 sender = infra.sender
 email_files = infra.email_files
+prompts = infra.prompts
 
 
 @log_operation
