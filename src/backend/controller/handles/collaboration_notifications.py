@@ -2,10 +2,14 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
+from src.backend.controller.schema.collaboration_notifications import (
+    CollaborationNotificationCreate,
+    CollaborationNotificationUpdate,
+)
 from src.backend.service.db.repository import control_repository
 from src.backend.service.manage import control_db
 
@@ -52,14 +56,11 @@ async def list_notifications(
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def create_notification(
-    data: dict[str, Any] = Body(...),
+    data: CollaborationNotificationCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    payload = dict(data)
-    for field in ("id", "user_id", "created_at", "is_read"):
-        payload.pop(field, None)
-
+    payload = data.model_dump()
     payload["user_id"] = current_user["user_id"]
     payload["is_read"] = False
 
@@ -100,11 +101,11 @@ async def get_notification(
 @router.patch("/{notification_id}")
 async def update_notification(
     notification_id: int,
-    data: dict[str, Any] = Body(...),
+    data: CollaborationNotificationUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    if data.get("is_read") is not True:
+    if data.is_read is not True:
         raise HTTPException(
             status_code=400,
             detail="Only marking a notification as read is supported",
