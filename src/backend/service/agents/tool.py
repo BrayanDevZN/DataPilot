@@ -2,6 +2,10 @@
 
 from typing import Any
 
+import polars as pl
+from pyspark.sql import DataFrame
+from pyspark.sql.types import DateType, NumericType, TimestampType
+
 from src.backend.utils.manage import DataToolsManager
 
 
@@ -128,6 +132,87 @@ class AgentDataTools:
     @property
     def definition(self) -> dict[str, Any]:
         return ANALYTICS_TOOL
+
+    @property
+    def engine(self) -> str:
+        return self.manager.engine
+
+    @property
+    def row_count(self) -> int:
+        return self.manager.row_count
+
+    def dataset_schema(self) -> dict[str, Any]:
+        if isinstance(self.data, DataFrame):
+            columns = [field.name for field in self.data.schema.fields]
+            numeric_columns = [
+                field.name
+                for field in self.data.schema.fields
+                if isinstance(field.dataType, NumericType)
+            ]
+            datetime_columns = [
+                field.name
+                for field in self.data.schema.fields
+                if isinstance(field.dataType, (DateType, TimestampType))
+            ]
+            categorical_columns = [
+                column
+                for column in columns
+                if column not in set(numeric_columns + datetime_columns)
+            ]
+            dtypes = {
+                field.name: field.dataType.simpleString()
+                for field in self.data.schema.fields
+            }
+        else:
+            schema = self.data.collect_schema()
+            columns = schema.names()
+            numeric_columns = [
+                name
+                for name, dtype in schema.items()
+                if dtype.is_numeric()
+            ]
+            datetime_columns = [
+                name
+                for name, dtype in schema.items()
+                if dtype in {
+                    pl.Date,
+                    pl.Datetime,
+                    pl.Time,
+                }
+            ]
+            categorical_columns = [
+                column
+                for column in columns
+                if column not in set(numeric_columns + datetime_columns)
+            ]
+            dtypes = {
+                name: str(dtype)
+                for name, dtype in schema.items()
+            }
+
+        unique_columns = categorical_columns[:20]
+        unique_values = self.tool.unique_values(
+            self.data,
+            columns=unique_columns,
+            limit=12,
+        )
+
+        return {
+            "columns": columns,
+            "dtypes": dtypes,
+            "numeric_columns": numeric_columns,
+            "categorical_columns": categorical_columns,
+            "datetime_columns": datetime_columns,
+            "unique_values": unique_values,
+            "row_count": self.row_count,
+            "engine": self.engine,
+        }
+
+    def execute_many(self, plans: list[dict]) -> list[dict]:
+        return self.tool.execute_many(
+            self.data,
+            plans,
+        )
 
     def execute(self, arguments: dict[str, Any]) -> list[dict]:
         return self.tool.execute(
