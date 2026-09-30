@@ -1,16 +1,12 @@
-"""Public account-verification routes."""
+"""Public account-verification routes backed by Redis."""
 
-from secrets import randbelow
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, status
 
-from src.backend.controller.dependencies import get_session
 from src.backend.controller.schema.validation_account import (
     ValidationAccountConsume,
     ValidationAccountIssue,
 )
-from src.backend.service.db.repository import control_repository
-from src.backend.service.manage import sender
+from src.backend.service.manage import sender, verification_codes
 
 
 router = APIRouter(
@@ -19,53 +15,53 @@ router = APIRouter(
 )
 
 
-def _code() -> str:
-    return f"{randbelow(1_000_000):06d}"
-
-
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def issue_account_validation(
     data: ValidationAccountIssue,
-    session: AsyncSession = Depends(get_session),
 ):
-    email = data.email.strip().lower()
+    email = str(data.email).strip().lower()
 
-    code = _code()
+    code = await verification_codes.issue(
+        "create_account",
+        email,
+        expire=None,
+    )
 
     try:
-        result = await control_repository(
-            session,
-        ).validation_account.db.issue(email, code)
         await sender.create_account(email, code)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception:
+        await verification_codes.delete(
+            "create_account",
+            email,
+        )
+        raise
 
     return {
         "issued": True,
-        "validation_id": result["item"]["validation_id"],
         "email": email,
+        "expires_in": 60,
     }
 
 
 @router.post("/consume")
 async def consume_account_validation(
     data: ValidationAccountConsume,
-    session: AsyncSession = Depends(get_session),
 ):
-    email = data.email.strip().lower()
-    number = data.number
+    email = str(data.email).strip().lower()
 
-    try:
-        result = await control_repository(
-            session,
-        ).validation_account.db.consume(email, number)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+    consumed = await verification_codes.consume(
+        "create_account",
+        email,
+        data.number,
+    )
 
-    if not result["consumed"]:
+    if not consumed:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired verification code",
         )
 
-    return {"validated": True, "email": email}
+    return {
+        "validated": True,
+        "email": email,
+    }
