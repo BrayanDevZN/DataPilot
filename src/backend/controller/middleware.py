@@ -9,7 +9,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from src.backend.controller.session import ACCESS_COOKIE
-from src.backend.controller.session import ACCESS_COOKIE
 from src.backend.domain.module import ExpiredTokenError, InvalidTokenError
 from src.backend.logs.log import logger
 from src.backend.service.manage import jwt, redis
