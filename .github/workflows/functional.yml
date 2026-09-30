@@ -33,9 +33,13 @@ jobs:
           docker --version
           docker compose version
 
-      - name: Build backend images
+      - name: Build backend base image
         run: |
-          docker compose --profile build --profile test build base api worker functional-tests
+          docker compose --profile build build base
+
+      - name: Build API, worker and functional test images
+        run: |
+          docker compose --profile test build api worker functional-tests
 
       - name: Start backend stack
         run: |
