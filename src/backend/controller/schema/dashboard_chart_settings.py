@@ -1,6 +1,6 @@
 """Schemas for dashboard chart-setting routes."""
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .common import StrictSchema
 
@@ -29,3 +29,10 @@ class DashboardChartSettingsUpdate(StrictSchema):
     bar_style: str | None = Field(default=None, min_length=1, max_length=100)
     pie_colors: list[str] | None = Field(default=None, max_length=100)
     show_legend: bool | None = None
+
+    @model_validator(mode="after")
+    def reject_null_fields(self):
+        for field in self.model_fields_set:
+            if getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
