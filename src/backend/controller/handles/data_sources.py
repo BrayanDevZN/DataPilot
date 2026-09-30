@@ -2,10 +2,11 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
+from src.backend.controller.schema.data_sources import DataSourceCreate, DataSourceUpdate
 from src.backend.service.db.repository import control_repository
 from src.backend.service.manage import control_db
 
@@ -45,21 +46,11 @@ async def list_data_sources(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_data_source(
-    data: dict[str, Any] = Body(...),
+    data: DataSourceCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    payload = dict(data)
-    for field in (
-        "id",
-        "user_id",
-        "created_at",
-        "updated_at",
-        "last_synced_at",
-        "next_sync_at",
-    ):
-        payload.pop(field, None)
-
+    payload = data.model_dump()
     payload["user_id"] = current_user["user_id"]
 
     try:
@@ -84,22 +75,13 @@ async def get_data_source(
 @router.patch("/{data_source_id}")
 async def update_data_source(
     data_source_id: int,
-    data: dict[str, Any] = Body(...),
+    data: DataSourceUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     await _owned(session, data_source_id, current_user["user_id"])
 
-    payload = dict(data)
-    for field in (
-        "id",
-        "user_id",
-        "created_at",
-        "updated_at",
-        "last_synced_at",
-        "next_sync_at",
-    ):
-        payload.pop(field, None)
+    payload = data.model_dump(exclude_unset=True)
 
     if not payload:
         raise HTTPException(status_code=400, detail="No editable fields provided")
