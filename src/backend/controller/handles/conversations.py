@@ -29,7 +29,7 @@ async def _owned(
     return result["item"]
 
 
-@router.get("")
+@router.get("/")
 async def list_conversations(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -45,7 +45,7 @@ async def list_conversations(
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     data: ConversationCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -72,9 +72,9 @@ async def get_conversation(
     )
 
 
-@router.patch("/{conversation_id}")
+@router.patch("/")
 async def update_conversation(
-    conversation_id: int,
+    conversation_id: int = Query(..., gt=0),
     data: ConversationUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -94,11 +94,11 @@ async def update_conversation(
 
 
 @router.delete(
-    "/{conversation_id}",
+    "/",
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_conversation(
-    conversation_id: int,
+    conversation_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
