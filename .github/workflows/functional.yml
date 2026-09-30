@@ -38,13 +38,47 @@ jobs:
         run: |
           docker compose build api worker
 
+      - name: Checkout MCP Sender
+        uses: actions/checkout@v4
+        with:
+          repository: BrayanDevZN/mcp_sender
+          path: mcp_sender
+
       - name: Prepare sender environment file
         run: |
-          touch .env
+          cat <<'EOF' > mcp_sender/.env
+          email=test@example.com
+          password=test-password
+          origin=*
+          rate_limit=20
+          global_rate_limit=200
+          EOF
+
+      - name: Build sender images locally
+        run: |
+          docker build -f mcp_sender/Dockerfile.base \
+            -t brayandevzn/mcp_sender:base-v1 \
+            mcp_sender
+
+          docker build -f mcp_sender/Dockerfile.kafka \
+            -t brayandevzn/mcp_sender:kafka-v1 \
+            mcp_sender
+
+          docker build -f mcp_sender/Dockerfile.consumer \
+            -t brayandevzn/mcp_sender:consumer-v1 \
+            mcp_sender
+
+          docker build -f mcp_sender/Dockerfile.api \
+            -t brayandevzn/mcp_sender:api-v1 \
+            mcp_sender
+
+          docker build -f mcp_sender/Dockerfile.worker \
+            -t brayandevzn/mcp_server:worker-v1 \
+            mcp_sender
 
       - name: Start sender stack
         run: |
-          docker compose -f sender-v1.yml up -d
+          docker compose -f mcp_sender/sender-v1.yml up -d
 
       - name: Start backend stack
         env:
@@ -80,11 +114,11 @@ jobs:
           docker compose ps
           docker compose logs --no-color api worker redis redis-celery
           echo "=== Sender ==="
-          docker compose -f sender-v1.yml ps
-          docker compose -f sender-v1.yml logs --no-color
+          docker compose -f mcp_sender/sender-v1.yml ps
+          docker compose -f mcp_sender/sender-v1.yml logs --no-color
 
       - name: Stop stack
         if: always()
         run: |
           docker compose down -v --remove-orphans
-          docker compose -f sender-v1.yml down -v --remove-orphans
+          docker compose -f mcp_sender/sender-v1.yml down -v --remove-orphans
