@@ -1,3 +1,17 @@
+from .agents import (
+    AgentHistoryMessage,
+    AgentTextResponse,
+    AnalysisAgentRequest,
+    ChatAgentRequest,
+    ChatIntentAgentRequest,
+    DashboardGeneralAgentRequest,
+    DashboardMultiGeneralAgentRequest,
+    DashboardMultiSpecificAgentRequest,
+    DashboardPlannerAgentRequest,
+    DashboardSpecificAgentRequest,
+    DataAgentRequest,
+    MultiAnalysisAgentRequest,
+)
 from .auth import LoginRequest, LoginResponse, LogoutResponse, RefreshResponse
 from .collaboration_notifications import CollaborationNotificationCreate, CollaborationNotificationUpdate
 from .conversations import ConversationCreate, ConversationUpdate
@@ -15,6 +29,12 @@ from .sender import (
 from .users import UserCreate, UserResponse, UserUpdate
 
 __all__ = [
+    "AgentHistoryMessage", "AgentTextResponse",
+    "ChatAgentRequest", "ChatIntentAgentRequest",
+    "AnalysisAgentRequest", "MultiAnalysisAgentRequest", "DataAgentRequest",
+    "DashboardPlannerAgentRequest", "DashboardGeneralAgentRequest",
+    "DashboardSpecificAgentRequest", "DashboardMultiGeneralAgentRequest",
+    "DashboardMultiSpecificAgentRequest",
     "LoginRequest", "LoginResponse", "LogoutResponse", "RefreshResponse",
     "UserCreate", "UserResponse", "UserUpdate",
     "ConversationCreate", "ConversationUpdate", "MessageCreate", "MessageUpdate",
