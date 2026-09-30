@@ -5,7 +5,7 @@ from src.backend.repository.cache import Cache
 
 from .auth import hash, jwt
 from .db.migrate import make_migrate
-from .db.tables import control_db
+from .db.control import control_db
 from .sender import Sender
 
 redis = redis_connection.client
