@@ -24,6 +24,7 @@ class Middleware(BaseHTTPMiddleware):
         rate_limit: int = 120,
         window_seconds: int = 60,
         public_routes: Iterable[str] | None = None,
+        trust_proxy_headers: bool = False,
     ) -> None:
         super().__init__(app)
 
@@ -41,6 +42,7 @@ class Middleware(BaseHTTPMiddleware):
             self._normalize_path(path)
             for path in (public_routes or ())
         }
+        self.trust_proxy_headers = trust_proxy_headers
 
     async def dispatch(
         self,
@@ -117,14 +119,15 @@ class Middleware(BaseHTTPMiddleware):
 
     def _client_ip(self, request: Request) -> str:
         """Resolve the client IP, respecting common reverse-proxy headers."""
-        forwarded = request.headers.get("x-forwarded-for")
+        if self.trust_proxy_headers:
+            forwarded = request.headers.get("x-forwarded-for")
 
-        if forwarded:
-            return forwarded.split(",", 1)[0].strip()
+            if forwarded:
+                return forwarded.split(",", 1)[0].strip()
 
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip.strip()
+            real_ip = request.headers.get("x-real-ip")
+            if real_ip:
+                return real_ip.strip()
 
         if request.client:
             return request.client.host
