@@ -36,8 +36,10 @@ class SparkTools:
         "in",
     }
 
-    def __init__(self, spark: SparkSession | None = None) -> None:
-        self.spark = spark or SparkSession.builder.appName("DataPilot").getOrCreate()
+    def __init__(self, spark: SparkSession) -> None:
+        if not isinstance(spark, SparkSession):
+            raise TypeError("SparkTools requires a SparkSession")
+        self.spark = spark
 
     def unique_values(self, df, columns=None, limit: int = 30) -> dict:
         if self._is_empty(df):
