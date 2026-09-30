@@ -65,6 +65,9 @@ class Settings:
     database_url: str | None = field(default=None, repr=False)
     db_port: int = 5432
     db_connect_timeout: int = 10
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_db: int = 0
     email_timeout: int = 30
     url_sender: str = "http://api:8000"
     celery_broker_url: str = "redis://redis-celery:6379/0"
@@ -89,6 +92,9 @@ class Settings:
             database_url=os.getenv("DATABASE_URL"),
             db_port=positive_int("DB_PORT", 5432),
             db_connect_timeout=positive_int("DB_CONNECT_TIMEOUT", 10),
+            redis_host=os.getenv("REDIS_HOST") or "localhost",
+            redis_port=positive_int("REDIS_PORT", 6379),
+            redis_db=int(os.getenv("REDIS_DB", "0")),
             email_timeout=positive_int("EMAIL_TIMEOUT", 30),
             url_sender=os.getenv("URL_SENDER") or "http://api:8000",
             celery_broker_url=os.getenv("CELERY_BROKER_URL") or "redis://redis-celery:6379/0",
