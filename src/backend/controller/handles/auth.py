@@ -13,14 +13,15 @@ from src.backend.controller.schema.auth import (
     RefreshResponse,
 )
 from src.backend.controller.session import (
+    clear_auth2_user_cookie,
     clear_session_cookies,
+    create_auth2_user_cookie,
     create_session,
     consume_refresh_token,
 )
 from src.backend.service.manage import (
     control_db,
     hash,
-    sender,
     verification_codes,
 )
 
@@ -57,32 +58,7 @@ async def login(
             detail="Invalid credentials",
         )
 
-    if user.get("auth2", False):
-        if data.code is None:
-            response.status_code = status.HTTP_202_ACCEPTED
-            code = await verification_codes.issue(
-                "auth2",
-                user["email"],
-                expire=None,
-            )
-
-            try:
-                await sender.auth2(user["email"], code)
-            except Exception:
-                await verification_codes.delete(
-                    "auth2",
-                    user["email"],
-                )
-                raise
-
-            return {
-                "authenticated": False,
-                "auth2_required": True,
-                "access_expires_at": None,
-                "refresh_expires_at": None,
-                "user": None,
-            }
-
+    if data.code is not None:
         consumed = await verification_codes.consume(
             "auth2",
             user["email"],
@@ -94,11 +70,25 @@ async def login(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired two-factor code",
             )
-    elif data.code is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Two-factor authentication is not enabled for this user",
+
+        clear_auth2_user_cookie(response)
+        return await create_session(response, user)
+
+    if user.get("auth2", False):
+        response.status_code = status.HTTP_202_ACCEPTED
+        create_auth2_user_cookie(
+            response,
+            user["email"],
         )
+
+        return {
+            "authenticated": False,
+            "auth2_required": True,
+            "message": "required auth2",
+            "access_expires_at": None,
+            "refresh_expires_at": None,
+            "user": None,
+        }
 
     return await create_session(response, user)
 
