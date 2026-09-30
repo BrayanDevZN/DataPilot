@@ -152,8 +152,8 @@ async def get_collaboration(
 
 @router.patch("/")
 async def update_collaboration(
-    collaboration_id: int = Query(..., gt=0),
     data: DashboardCollaborationUpdate,
+    collaboration_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -175,8 +175,8 @@ async def update_collaboration(
 
 @router.post("/respond")
 async def respond_collaboration(
-    collaboration_id: int = Query(..., gt=0),
     data: DashboardCollaborationRespond,
+    collaboration_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
