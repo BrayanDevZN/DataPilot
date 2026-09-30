@@ -36,7 +36,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         logger.setLevel('WARNING')
         cls.directory = tempfile.TemporaryDirectory(prefix='datapilot-control-tests-')
         cls.server = pgserver.get_server(Path(cls.directory.name) / 'data', cleanup_mode='stop')
-        cls.url = make_url(cls.server.get_uri()).set(drivername='postgresql+psycopg')
+        cls.url = make_url(cls.server.get_uri()).set(drivername='postgresql+asyncpg')
 
     @classmethod
     def tearDownClass(cls):
