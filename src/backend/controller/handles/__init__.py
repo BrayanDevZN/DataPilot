@@ -1,0 +1,48 @@
+from .collaboration_notifications import router as collaboration_notifications_router
+from .conversations import router as conversations_router
+from .dashboard_chart_settings import router as dashboard_chart_settings_router
+from .dashboard_charts import router as dashboard_charts_router
+from .dashboard_collaborations import router as dashboard_collaborations_router
+from .dashboards import router as dashboards_router
+from .data_sources import router as data_sources_router
+from .messages import router as messages_router
+from .users import router as users_router
+from .validation import router as validation_router
+from .validation_account import router as validation_account_router
+
+
+routers = (
+    users_router,
+    validation_router,
+    validation_account_router,
+    conversations_router,
+    messages_router,
+    data_sources_router,
+    dashboards_router,
+    dashboard_charts_router,
+    dashboard_chart_settings_router,
+    dashboard_collaborations_router,
+    collaboration_notifications_router,
+)
+
+PUBLIC_ROUTES = {
+    "/users",
+    "/validation-accounts",
+    "/validation-accounts/consume",
+}
+
+__all__ = [
+    "routers",
+    "PUBLIC_ROUTES",
+    "users_router",
+    "validation_router",
+    "validation_account_router",
+    "conversations_router",
+    "messages_router",
+    "data_sources_router",
+    "dashboards_router",
+    "dashboard_charts_router",
+    "dashboard_chart_settings_router",
+    "dashboard_collaborations_router",
+    "collaboration_notifications_router",
+]
