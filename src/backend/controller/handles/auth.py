@@ -1,0 +1,148 @@
+"""Authentication routes for login, token refresh and logout."""
+
+from secrets import randbelow
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.backend.controller.dependencies import get_session
+from src.backend.controller.schemas.auth import (
+    LoginRequest,
+    LoginResponse,
+    LogoutResponse,
+    RefreshResponse,
+)
+from src.backend.controller.session import (
+    clear_session_cookies,
+    create_session,
+    read_refresh_token,
+    revoke_refresh,
+)
+from src.backend.service.db.repository import control_repository
+from src.backend.service.manage import control_db, hash, sender
+
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _code() -> str:
+    return f"{randbelow(1_000_000):06d}"
+
+
+async def _find_user(
+    session: AsyncSession,
+    identifier: str,
+) -> dict[str, Any] | None:
+    field = "email" if "@" in identifier else "username"
+    return await control_db.users.get(
+        session,
+        field,
+        identifier.strip().lower(),
+    )
+
+
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+)
+async def login(
+    data: LoginRequest,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+):
+    user = await _find_user(session, data.identifier)
+
+    if user is None or not hash.compare(data.password, user["password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+
+    if data.auth2:
+        repository = control_repository(session)
+
+        if data.code is None:
+            code = _code()
+
+            await repository.validation.db.issue(
+                user["user_id"],
+                code,
+            )
+            await sender.auth2(user["email"], code)
+
+            return {
+                "authenticated": False,
+                "auth2_required": True,
+                "access_expires_at": None,
+                "refresh_expires_at": None,
+                "user": None,
+            }
+
+        consumed = await repository.validation.db.consume(
+            user["user_id"],
+            data.code,
+        )
+
+        if not consumed["consumed"]:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired two-factor code",
+            )
+
+    return await create_session(response, user)
+
+
+@router.post(
+    "/refresh",
+    response_model=RefreshResponse,
+)
+async def refresh(
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+):
+    claims = await read_refresh_token(request)
+
+    user = await control_db.users.get(
+        session,
+        "user_id",
+        claims["user_id"],
+    )
+
+    if user is None:
+        await revoke_refresh(claims)
+        clear_session_cookies(response)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token user does not exist",
+        )
+
+    await revoke_refresh(claims)
+    session_data = await create_session(response, user)
+
+    return {
+        "authenticated": True,
+        "access_expires_at": session_data["access_expires_at"],
+        "refresh_expires_at": session_data["refresh_expires_at"],
+    }
+
+
+@router.post(
+    "/logout",
+    response_model=LogoutResponse,
+)
+async def logout(
+    request: Request,
+    response: Response,
+):
+    try:
+        claims = await read_refresh_token(request)
+    except HTTPException:
+        claims = None
+
+    if claims is not None:
+        await revoke_refresh(claims)
+
+    clear_session_cookies(response)
+    return {"logged_out": True}
