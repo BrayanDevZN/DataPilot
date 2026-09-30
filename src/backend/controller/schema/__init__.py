@@ -8,7 +8,6 @@ from .dashboards import DashboardCreate, DashboardUpdate
 from .data_sources import DataSourceCreate, DataSourceUpdate
 from .messages import MessageCreate, MessageUpdate
 from .sender import (
-    Auth2EmailRequest,
     ChangePasswordEmailRequest,
     CreateAccountEmailRequest,
     SenderResponse,
@@ -23,7 +22,7 @@ __all__ = [
     "ValidationAccountIssue", "ValidationAccountConsume",
     "ConversationCreate", "ConversationUpdate", "MessageCreate", "MessageUpdate",
     "CreateAccountEmailRequest", "ChangePasswordEmailRequest",
-    "Auth2EmailRequest", "SenderResponse",
+    "SenderResponse",
     "DataSourceCreate", "DataSourceUpdate", "DashboardCreate", "DashboardUpdate",
     "DashboardChartCreate", "DashboardChartUpdate",
     "DashboardChartSettingsSave", "DashboardChartSettingsUpdate",
