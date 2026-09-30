@@ -58,7 +58,7 @@ async def login(
             detail="Invalid credentials",
         )
 
-    if data.auth2:
+    if user.get("auth2", False):
         repository = control_repository(session)
 
         if data.code is None:
@@ -89,6 +89,11 @@ async def login(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired two-factor code",
             )
+    elif data.code is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Two-factor authentication is not enabled for this user",
+        )
 
     return await create_session(response, user)
 
