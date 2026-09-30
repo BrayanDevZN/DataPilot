@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,7 +20,7 @@ class User(Base):
     __tablename__ = "users"
 
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    public_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, server_default=text("gen_random_uuid()"))
+    public_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, default=uuid4)
     name: Mapped[str] = mapped_column(Text)
     username: Mapped[str] = mapped_column(String(30))
     email: Mapped[str] = mapped_column(Text)
