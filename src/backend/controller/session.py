@@ -10,7 +10,9 @@ from src.backend.domain.module import ExpiredTokenError, InvalidTokenError
 from src.backend.infra.manage import settings
 from src.backend.service.manage import (
     ACCESS_TOKEN_TTL,
+    AUTH2_USER_TTL,
     REFRESH_TOKEN_TTL,
+    auth2_jwt,
     jwt,
     redis,
     refresh_jwt,
@@ -19,7 +21,82 @@ from src.backend.service.manage import (
 
 ACCESS_COOKIE = "access_token"
 REFRESH_COOKIE = "refresh_token"
+AUTH2_USER_COOKIE = "auth2_user"
 
+
+
+def create_auth2_user_cookie(
+    response: Response,
+    email: str,
+) -> int:
+    now = datetime.now(timezone.utc)
+    expires_at = now + AUTH2_USER_TTL
+
+    token = auth2_jwt.write({
+        "email": str(email).strip().lower(),
+        "token_type": "auth2_user",
+    })
+
+    response.set_cookie(
+        key=AUTH2_USER_COOKIE,
+        value=token,
+        max_age=int(AUTH2_USER_TTL.total_seconds()),
+        expires=expires_at,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/sender/auth2",
+    )
+
+    return int(expires_at.timestamp())
+
+
+def clear_auth2_user_cookie(response: Response) -> None:
+    response.delete_cookie(
+        AUTH2_USER_COOKIE,
+        path="/sender/auth2",
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+    )
+
+
+def read_auth2_user_cookie(request: Request) -> dict[str, Any]:
+    token = request.cookies.get(AUTH2_USER_COOKIE)
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Two-factor authentication cookie required",
+        )
+
+    try:
+        claims = auth2_jwt.read(token)
+    except ExpiredTokenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Two-factor authentication cookie expired",
+        ) from error
+    except InvalidTokenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid two-factor authentication cookie",
+        ) from error
+
+    if claims.get("token_type") != "auth2_user":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid two-factor authentication token type",
+        )
+
+    email = claims.get("email")
+    if not isinstance(email, str) or not email.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Two-factor authentication token does not contain an email",
+        )
+
+    return claims
 
 def _public_user(user: dict[str, Any]) -> dict[str, Any]:
     data = dict(user)
