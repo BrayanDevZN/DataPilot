@@ -14,8 +14,22 @@ class Sender:
 
     @log_operation
     def _send(self, payload: dict[str, str]) -> None:
-        response = requests.post(f"{self._url}/sender/", json=payload)
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                f"{self._url}/sender/",
+                json=payload,
+                timeout=30,
+            )
+        except requests.RequestException as error:
+            raise RuntimeError(
+                f"Unable to reach sender-v1 at {self._url}: {error}"
+            ) from error
+
+        if not response.ok:
+            raise RuntimeError(
+                "sender-v1 rejected the email request: "
+                f"HTTP {response.status_code} - {response.text}"
+            )
 
     @log_operation
     async def send(self, to: str, subject: str, contents: str, *, html: bool = False) -> dict[str, bool]:
