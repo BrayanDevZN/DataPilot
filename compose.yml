@@ -73,6 +73,28 @@ services:
       redis-celery:
         condition: service_healthy
 
+  functional-tests:
+    image: datapilot-functional-tests:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+    profiles:
+      - test
+    environment:
+      FUNCTIONAL_BASE_URL: http://api:8000
+      FUNCTIONAL_REDIS_HOST: redis
+      FUNCTIONAL_REDIS_PORT: 6379
+    volumes:
+      - ./tests:/app/tests:ro
+    command: ["python", "tests/functional/routes.py"]
+    depends_on:
+      api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      redis-celery:
+        condition: service_healthy
+
   worker:
     image: datapilot-worker:latest
     build:
