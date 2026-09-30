@@ -2,7 +2,7 @@
 
 from pydantic import Field, field_validator, model_validator
 
-from .common import StrictSchema
+from .common import StrictSchema, normalize_verification_code
 
 
 class LoginRequest(StrictSchema):
@@ -18,14 +18,12 @@ class LoginRequest(StrictSchema):
             raise ValueError("password must not exceed 72 UTF-8 bytes")
         return value
 
-    @field_validator("code")
+    @field_validator("code", mode="before")
     @classmethod
-    def validate_code(cls, value: str | None) -> str | None:
+    def validate_code(cls, value) -> str | None:
         if value is None:
             return None
-        if len(value) != 6 or not value.isascii() or not value.isdigit():
-            raise ValueError("code must contain six digits")
-        return value
+        return normalize_verification_code(value)
 
     @model_validator(mode="after")
     def validate_auth2_contract(self):
