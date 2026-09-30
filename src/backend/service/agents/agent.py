@@ -33,7 +33,10 @@ class DataAgent:
         history: list[dict[str, Any]] | None = None,
     ) -> str:
         history = history or []
-        columns = self.tools.data.columns if hasattr(self.tools.data, "columns") else []
+        if hasattr(self.tools.data, "collect_schema"):
+            columns = self.tools.data.collect_schema().names()
+        else:
+            columns = list(self.tools.data.columns)
 
         unique_values = self.tools.tool.unique_values(
             self.tools.data,
