@@ -19,7 +19,12 @@ from .dashboard_chart_settings import DashboardChartSettingsSave, DashboardChart
 from .dashboard_charts import DashboardChartCreate, DashboardChartUpdate
 from .dashboard_collaborations import DashboardCollaborationCreate, DashboardCollaborationRespond, DashboardCollaborationUpdate
 from .dashboards import DashboardCreate, DashboardUpdate
-from .data_sources import DataSourceCreate, DataSourceUpdate
+from .data_sources import (
+    DataSourceUpdate,
+    SQLDataSourceCreate,
+    SQLDataSourceExecute,
+    SQLDataSourceUpdate,
+)
 from .messages import MessageCreate, MessageUpdate
 from .sender import (
     ChangePasswordEmailRequest,
@@ -40,7 +45,8 @@ __all__ = [
     "ConversationCreate", "ConversationUpdate", "MessageCreate", "MessageUpdate",
     "CreateAccountEmailRequest", "ChangePasswordEmailRequest",
     "SenderResponse",
-    "DataSourceCreate", "DataSourceUpdate", "DashboardCreate", "DashboardUpdate",
+    "DataSourceUpdate", "SQLDataSourceCreate", "SQLDataSourceUpdate",
+    "SQLDataSourceExecute", "DashboardCreate", "DashboardUpdate",
     "DashboardChartCreate", "DashboardChartUpdate",
     "DashboardChartSettingsSave", "DashboardChartSettingsUpdate",
     "DashboardCollaborationCreate", "DashboardCollaborationUpdate", "DashboardCollaborationRespond",
