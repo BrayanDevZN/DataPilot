@@ -41,7 +41,13 @@ def call(
     if response.status_code not in allowed:
         fail(method, path, response)
 
-    print(f"OK {method} {path} -> {response.status_code}", flush=True)
+    if response.status_code >= 400:
+        print(
+            f"OK {method} {path} -> {response.status_code}: {response.text}",
+            flush=True,
+        )
+    else:
+        print(f"OK {method} {path} -> {response.status_code}", flush=True)
     return response
 
 
@@ -107,19 +113,28 @@ def create_user(
 
 def main() -> None:
     session = requests.Session()
+    collaborator_session = requests.Session()
     suffix = uuid4().hex[:10]
     email = f"functional-{suffix}@example.com"
     username = f"functional_{suffix}"
+    collaborator_email = f"collaborator-{suffix}@example.com"
+    collaborator_username = f"collaborator_{suffix}"
     password = f"T-{uuid4().hex}aA1!"
 
     wait_api(session)
 
     call(requests.Session(), "GET", "/users/", 401)
 
-    create_user(
+    user = create_user(
         session,
         email=email,
         username=username,
+        password=password,
+    )
+    collaborator = create_user(
+        collaborator_session,
+        email=collaborator_email,
+        username=collaborator_username,
         password=password,
     )
 
