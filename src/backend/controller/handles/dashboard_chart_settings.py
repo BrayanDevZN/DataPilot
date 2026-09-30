@@ -120,8 +120,8 @@ async def get_chart_setting(
 
 @router.patch("/")
 async def update_chart_setting(
-    setting_id: int = Query(..., gt=0),
     data: DashboardChartSettingsUpdate,
+    setting_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
