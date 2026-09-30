@@ -6,6 +6,7 @@ from .connection.celery import CeleryConnection
 from .connection.database import PostgreSQLConnection, SQLConnection
 from .connection.redis import RedisConnection
 from .sender import Sender
+from .openai import OpenAIClient
 from .core.config.settings import Settings
 from .core.sender.file import EmailFiles
 from .core.prompts.prompt import PromptFiles
@@ -30,6 +31,7 @@ class Infrastructure:
             database_url=settings.database_url, connect_timeout=settings.db_connect_timeout,
         )
         self.sender = Sender(settings.url_sender)
+        self.openai = OpenAIClient(settings.openai_api_key)
         logger.info("Infraestrutura pronta: PostgreSQL, Redis, Celery e Sender")
 
     @log_operation
@@ -52,6 +54,7 @@ redis = infra.redis
 celery_connection = infra.celery_connection
 celery = infra.celery
 sender = infra.sender
+openai = infra.openai
 email_files = infra.email_files
 prompts = infra.prompts
 
