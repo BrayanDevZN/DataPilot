@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
-from src.backend.controller.schemas.auth import LoginResponse
-from src.backend.controller.schemas.users import UserCreate, UserUpdate
+from src.backend.controller.schema.auth import LoginResponse
+from src.backend.controller.schema.users import UserCreate, UserUpdate
 from src.backend.controller.session import create_session
 from src.backend.service.manage import control_db, hash
 
