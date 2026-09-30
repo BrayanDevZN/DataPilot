@@ -2,10 +2,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base
+from ..types import JSONType
 
 if TYPE_CHECKING:
     from .dashboard_charts import DashboardChart
@@ -25,13 +25,13 @@ class DashboardChartSettings(Base):
     grid_color: Mapped[str] = mapped_column(Text, server_default="#cbd5e1")
     grid_style: Mapped[str] = mapped_column(Text, server_default="3 3")
     bar_style: Mapped[str] = mapped_column(Text, server_default="rounded")
-    pie_colors: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    pie_colors: Mapped[list[str]] = mapped_column(JSONType, server_default=text("'[]'"))
     show_legend: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index("dashboard_chart_settings_dashboard_default_unique", dashboard_id,
-              unique=True, postgresql_where=chart_id.is_(None)),
+              unique=True, postgresql_where=chart_id.is_(None), sqlite_where=chart_id.is_(None)),
     )
 
     dashboard: Mapped["Dashboard"] = relationship(
