@@ -100,8 +100,8 @@ async def get_notification(
 
 @router.patch("/")
 async def update_notification(
-    notification_id: int = Query(..., gt=0),
     data: CollaborationNotificationUpdate,
+    notification_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
