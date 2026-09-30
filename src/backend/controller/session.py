@@ -19,9 +19,9 @@ from src.backend.service.manage import (
 )
 
 
-ACCESS_COOKIE = "access_token"
-REFRESH_COOKIE = "refresh_token"
-AUTH2_USER_COOKIE = "auth2_user"
+ACCESS_COOKIE = "X-token_user"
+REFRESH_COOKIE = "X-refresh_user"
+AUTH2_USER_COOKIE = "X-auth2_user"
 
 
 
