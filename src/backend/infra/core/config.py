@@ -49,6 +49,7 @@ class Settings:
     email_user: str = "DataPilot <no-reply@datapilotplataform.com>"
     url_email: str | None = None
     secret: str | None = field(default=None, repr=False)
+    sing: str | None = field(default=None, repr=False)
     cors_allowed_origins: tuple[str, ...] = ()
 
     @classmethod
@@ -69,6 +70,7 @@ class Settings:
             email_user=os.getenv("EMAIL_USER", cls.email_user),
             url_email=os.getenv("URL_EMAIL"),
             secret=os.getenv("SECRET"),
+            sing=os.getenv("SING"),
             cors_allowed_origins=tuple(
                 origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
                 if origin.strip()
