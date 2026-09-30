@@ -3,7 +3,7 @@
 from src.backend.logs.log import logger, log_operation
 
 from .connection.celery import CeleryConnection
-from .connection.database import PostgreSQLConnection, SQLConnection
+from .connection.database import SQLConnection
 from .connection.redis import RedisConnection
 from .sender import Sender
 from .openai import OpenAIClient
@@ -29,14 +29,18 @@ class Infrastructure:
             backend=settings.celery_backend_url,
         )
         self.celery = self.celery_connection()
-        self.database = PostgreSQLConnection(
-            database=settings.db_name, host=settings.db_host, port=settings.db_port,
-            username=settings.db_user, password=settings.db_password,
-            database_url=settings.database_url, connect_timeout=settings.db_connect_timeout,
+        database_connect_args = (
+            {"timeout": settings.db_connect_timeout}
+            if settings.database_url.startswith("postgresql+asyncpg://")
+            else {}
+        )
+        self.database = SQLConnection(
+            settings.database_url,
+            connect_args=database_connect_args,
         )
         self.sender = Sender(settings.url_sender)
         self.openai = OpenAIClient(settings.openai_api_key)
-        logger.info("Infraestrutura pronta: PostgreSQL, Redis, Celery e Sender")
+        logger.info("Infraestrutura pronta: SQL, Redis, Celery e Sender")
 
     @log_operation
     def external_database(self, url: str, *, connect_args: dict | None = None) -> SQLConnection:
