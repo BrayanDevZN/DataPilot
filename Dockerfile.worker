@@ -1,0 +1,3 @@
+FROM base
+
+CMD ["python", "-m", "celery", "-A", "src.backend.service.task:task_app", "worker", "--loglevel=INFO", "-Q", "database", "-c", "2"]
