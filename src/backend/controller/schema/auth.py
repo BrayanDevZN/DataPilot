@@ -3,6 +3,7 @@
 from pydantic import Field, field_validator
 
 from .common import StrictSchema, normalize_verification_code
+from .users import UserResponse
 
 
 class LoginRequest(StrictSchema):
@@ -30,7 +31,7 @@ class LoginResponse(StrictSchema):
     auth2_required: bool = False
     access_expires_at: int | None = None
     refresh_expires_at: int | None = None
-    user: dict | None = None
+    user: UserResponse | None = None
 
 
 class RefreshResponse(StrictSchema):
