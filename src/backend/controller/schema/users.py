@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import EmailStr, Field, field_validator, model_validator
 
-from .common import StrictSchema
+from .common import StrictSchema, normalize_verification_code
 
 
 Gender = Literal["MASCULINO", "FEMININO", "PREFIRO NÃO DIZER"]
@@ -44,12 +44,10 @@ class UserCreate(StrictSchema):
     def password_rules(cls, value: str) -> str:
         return _validate_password(value)
 
-    @field_validator("code")
+    @field_validator("code", mode="before")
     @classmethod
-    def code_rules(cls, value: str) -> str:
-        if not value.isascii() or not value.isdigit():
-            raise ValueError("code must contain six digits")
-        return value
+    def code_rules(cls, value) -> str:
+        return normalize_verification_code(value)
 
 
 class UserUpdate(StrictSchema):
