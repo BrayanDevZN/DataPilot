@@ -174,11 +174,7 @@ class AgentDataTools:
             datetime_columns = [
                 name
                 for name, dtype in schema.items()
-                if dtype in {
-                    pl.Date,
-                    pl.Datetime,
-                    pl.Time,
-                }
+                if dtype.is_temporal()
             ]
             categorical_columns = [
                 column
