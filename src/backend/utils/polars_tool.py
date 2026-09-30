@@ -1,4 +1,4 @@
-"""Deterministic Polars tools used by DataPilot AI agents."""
+"""Deterministic Polars tools using LazyFrame execution for DataPilot AI agents."""
 
 import re
 
@@ -6,51 +6,25 @@ import polars as pl
 
 
 class PolarsTools:
-    VALID_OPERATIONS = {
-        "groupby",
-        "count",
-        "time_groupby",
-        "scatter",
-        "kpi",
-        "table",
-    }
-
-    VALID_AGGREGATIONS = {
-        "sum",
-        "mean",
-        "avg",
-        "count",
-        "max",
-        "min",
-        "median",
-        "none",
-    }
-
-    VALID_FILTER_OPERATORS = {
-        "equals",
-        "not_equals",
-        "contains",
-        "in",
-    }
+    VALID_OPERATIONS = {"groupby", "count", "time_groupby", "scatter", "kpi", "table"}
+    VALID_AGGREGATIONS = {"sum", "mean", "avg", "count", "max", "min", "median", "none"}
+    VALID_FILTER_OPERATORS = {"equals", "not_equals", "contains", "in"}
 
     def unique_values(self, df, columns=None, limit: int = 30) -> dict:
-        if self._is_empty(df):
-            return {}
-
-        temp_df = self._normalize_dataframe_columns(self._to_dataframe(df))
-        resolved_columns = self._resolve_columns(temp_df, columns)
+        lazy_df = self._normalize_dataframe_columns(self._to_lazyframe(df))
+        resolved_columns = self._resolve_columns(lazy_df, columns)
 
         if not resolved_columns:
+            schema = lazy_df.collect_schema()
             resolved_columns = [
-                column for column in temp_df.columns
-                if not temp_df.schema[column].is_numeric()
+                name for name, dtype in schema.items()
+                if not dtype.is_numeric()
             ]
 
         result = {}
-
         for column in resolved_columns:
             values = (
-                temp_df
+                lazy_df
                 .select(
                     pl.col(column)
                     .drop_nulls()
@@ -60,21 +34,18 @@ class PolarsTools:
                 )
                 .filter(pl.col(column) != "")
                 .unique(maintain_order=True)
-                .head(limit)
+                .limit(limit)
+                .collect()
                 .to_series()
                 .to_list()
             )
             result[column] = values
-
         return result
 
-    def filter_dataframe(self, df, filters: list[dict]) -> pl.DataFrame:
-        if self._is_empty(df) or not filters:
-            return self._to_dataframe(df)
+    def filter_dataframe(self, df, filters: list[dict]) -> pl.LazyFrame:
+        filtered_df = self._normalize_dataframe_columns(self._to_lazyframe(df))
 
-        filtered_df = self._normalize_dataframe_columns(self._to_dataframe(df))
-
-        for filter_spec in filters:
+        for filter_spec in filters or []:
             if not isinstance(filter_spec, dict):
                 continue
 
@@ -98,28 +69,21 @@ class PolarsTools:
                 .fill_null("")
             )
 
-            if operator == "equals":
+            if operator in {"equals", "in"}:
                 filtered_df = filtered_df.filter(series.is_in(clean_values))
             elif operator == "not_equals":
                 filtered_df = filtered_df.filter(~series.is_in(clean_values))
             elif operator == "contains":
                 pattern = "|".join(re.escape(value) for value in clean_values)
                 filtered_df = filtered_df.filter(series.str.contains(f"(?i){pattern}"))
-            elif operator == "in":
-                filtered_df = filtered_df.filter(series.is_in(clean_values))
 
         return filtered_df
 
     def execute(self, df, plan: dict) -> list[dict]:
-        if self._is_empty(df) or not isinstance(plan, dict):
+        if not isinstance(plan, dict):
             return []
 
-        df = self._normalize_dataframe_columns(self._to_dataframe(df))
-        df = self.filter_dataframe(df, plan.get("filters") or [])
-
-        if df.is_empty():
-            return []
-
+        lazy_df = self.filter_dataframe(df, plan.get("filters") or [])
         operation = plan.get("operation") or "groupby"
         if operation not in self.VALID_OPERATIONS:
             operation = "groupby"
@@ -131,17 +95,17 @@ class PolarsTools:
             aggregation = "sum"
 
         if operation == "count" or aggregation == "count":
-            return self._count(df, plan)
+            return self._count(lazy_df, plan)
         if operation == "time_groupby":
-            return self._time_groupby(df, plan, aggregation)
+            return self._time_groupby(lazy_df, plan, aggregation)
         if operation == "scatter":
-            return self._scatter(df, plan)
+            return self._scatter(lazy_df, plan)
         if operation == "kpi":
-            return self._kpi(df, plan, aggregation)
+            return self._kpi(lazy_df, plan, aggregation)
         if operation == "table":
-            return self._table(df, plan)
+            return self._table(lazy_df, plan)
 
-        return self._groupby(df, plan, aggregation)
+        return self._groupby(lazy_df, plan, aggregation)
 
     def execute_many(self, df, plans: list[dict]) -> list[dict]:
         results = []
@@ -179,38 +143,30 @@ class PolarsTools:
 
         return results
 
-    def _to_dataframe(self, df) -> pl.DataFrame:
-        if isinstance(df, pl.DataFrame):
+    def _to_lazyframe(self, df) -> pl.LazyFrame:
+        if isinstance(df, pl.LazyFrame):
             return df
+        if isinstance(df, pl.DataFrame):
+            return df.lazy()
         if df is None:
-            return pl.DataFrame()
+            return pl.DataFrame().lazy()
         if isinstance(df, list):
-            return pl.from_dicts(df, infer_schema_length=None)
+            return pl.from_dicts(df, infer_schema_length=None).lazy()
         if hasattr(df, "to_dict"):
             try:
                 records = df.to_dict(orient="records")
-                return pl.from_dicts(records, infer_schema_length=None)
+                return pl.from_dicts(records, infer_schema_length=None).lazy()
             except TypeError:
                 pass
-        return pl.DataFrame(df)
+        return pl.DataFrame(df).lazy()
 
-    def _is_empty(self, df) -> bool:
-        if df is None:
-            return True
-        if isinstance(df, pl.DataFrame):
-            return df.is_empty()
+    def _normalize_dataframe_columns(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        names = df.collect_schema().names()
+        rename_map = {name: str(name).strip() for name in names if str(name).strip() != name}
+        return df.rename(rename_map) if rename_map else df
 
-        empty = getattr(df, "empty", None)
-        if isinstance(empty, bool):
-            return empty
-        if isinstance(df, list):
-            return not df
-        return False
-
-    def _normalize_dataframe_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-        df = df.clone()
-        df.columns = [str(column).strip() for column in df.columns]
-        return df
+    def _columns(self, df: pl.LazyFrame) -> list[str]:
+        return df.collect_schema().names()
 
     def _normalize_name(self, value) -> str:
         return str(value).strip().lower().replace("_", " ")
@@ -219,27 +175,23 @@ class PolarsTools:
         if value is None:
             return []
         if isinstance(value, list):
-            return [
-                item for item in value
-                if item is not None and str(item).strip()
-            ]
+            return [item for item in value if item is not None and str(item).strip()]
         return [value] if str(value).strip() else []
 
     def _first_value(self, value):
         values = self._as_list(value)
         return str(values[0]).strip().lower() if values else "none"
 
-    def _find_column(self, df: pl.DataFrame, column) -> str | None:
+    def _find_column(self, df: pl.LazyFrame, column) -> str | None:
         if not column:
             return None
-
         target = self._normalize_name(column)
-        for real_column in df.columns:
+        for real_column in self._columns(df):
             if self._normalize_name(real_column) == target:
                 return real_column
         return None
 
-    def _resolve_columns(self, df: pl.DataFrame, columns) -> list[str]:
+    def _resolve_columns(self, df: pl.LazyFrame, columns) -> list[str]:
         resolved = []
         for column in self._as_list(columns):
             real_column = self._find_column(df, column)
@@ -247,23 +199,21 @@ class PolarsTools:
                 resolved.append(real_column)
         return resolved
 
-    def _resolve_group_by(self, df: pl.DataFrame, plan: dict) -> list[str]:
+    def _resolve_group_by(self, df: pl.LazyFrame, plan: dict) -> list[str]:
         group_by = self._resolve_columns(df, plan.get("group_by"))
         if group_by:
             return group_by
-
         x = self._find_column(df, plan.get("x"))
         return [x] if x else []
 
-    def _resolve_metric(self, df: pl.DataFrame, plan: dict) -> list[str]:
+    def _resolve_metric(self, df: pl.LazyFrame, plan: dict) -> list[str]:
         metric = self._resolve_columns(df, plan.get("metric"))
         if metric:
             return metric
-
         y = self._find_column(df, plan.get("y"))
         return [y] if y else []
 
-    def _to_numeric(self, df: pl.DataFrame, columns: list[str]) -> pl.DataFrame:
+    def _to_numeric(self, df: pl.LazyFrame, columns: list[str]) -> pl.LazyFrame:
         return (
             df.with_columns([
                 pl.col(column).cast(pl.Float64, strict=False).alias(column)
@@ -272,85 +222,51 @@ class PolarsTools:
             .drop_nulls(subset=columns)
         )
 
-    def _clean_column_name(self, column: str) -> str:
-        name = str(column).strip()
-        suffixes = {
-            "_sum": "",
-            "_mean": " Medio",
-            "_count": " Quantidade",
-            "_max": " Maximo",
-            "_min": " Minimo",
-            "_median": " Mediana",
-        }
-
-        for suffix, label in suffixes.items():
-            if name.endswith(suffix):
-                name = name[: -len(suffix)].strip()
-                if label and not name.lower().endswith(label.strip().lower()):
-                    name = f"{name}{label}"
-                break
-
-        name = name.replace("_", " ")
-        return " ".join(name.split())
-
-    def _sort_and_limit(
-        self,
-        result: pl.DataFrame,
-        y_column: str | None,
-        plan: dict,
-        default_limit: int = 20,
-    ) -> pl.DataFrame:
-        limit = plan.get("limit", default_limit)
-
+    def _limit_value(self, plan: dict, default: int, maximum: int) -> int:
+        limit = plan.get("limit", default)
         try:
             limit = int(limit)
         except Exception:
-            limit = default_limit
+            limit = default
+        return max(1, min(limit, maximum))
 
-        limit = max(1, min(limit, 100))
-        sort = plan.get("sort", "desc")
-
-        if y_column and y_column in result.columns and sort in ["asc", "desc"]:
-            result = result.sort(
-                y_column,
-                descending=sort == "desc",
-                nulls_last=True,
-            )
-
-        return result.head(limit)
-
-    def _aggregate(
+    def _sort_and_limit(
         self,
-        df: pl.DataFrame,
-        group_by: list[str],
-        metric: list[str],
-        aggregation: str,
-    ) -> pl.DataFrame:
+        df: pl.LazyFrame,
+        y_column: str | None,
+        plan: dict,
+        default_limit: int = 20,
+        maximum: int = 100,
+    ) -> pl.LazyFrame:
+        sort = plan.get("sort", "desc")
+        if y_column and y_column in self._columns(df) and sort in {"asc", "desc"}:
+            df = df.sort(y_column, descending=sort == "desc", nulls_last=True)
+        return df.limit(self._limit_value(plan, default_limit, maximum))
+
+    def _aggregate_exprs(self, metric: list[str], aggregation: str):
         if aggregation == "mean":
-            expressions = [pl.col(column).mean().alias(column) for column in metric]
-        elif aggregation == "max":
-            expressions = [pl.col(column).max().alias(column) for column in metric]
-        elif aggregation == "min":
-            expressions = [pl.col(column).min().alias(column) for column in metric]
-        elif aggregation == "median":
-            expressions = [pl.col(column).median().alias(column) for column in metric]
-        else:
-            expressions = [pl.col(column).sum().alias(column) for column in metric]
+            return [pl.col(column).mean().alias(column) for column in metric]
+        if aggregation == "max":
+            return [pl.col(column).max().alias(column) for column in metric]
+        if aggregation == "min":
+            return [pl.col(column).min().alias(column) for column in metric]
+        if aggregation == "median":
+            return [pl.col(column).median().alias(column) for column in metric]
+        return [pl.col(column).sum().alias(column) for column in metric]
 
-        result = df.group_by(group_by, maintain_order=True).agg(expressions)
-        result.columns = [self._clean_column_name(column) for column in result.columns]
-        return result
+    def _collect_dicts(self, df: pl.LazyFrame) -> list[dict]:
+        return df.collect().to_dicts()
 
-    def _count(self, df: pl.DataFrame, plan: dict) -> list[dict]:
+    def _count(self, df: pl.LazyFrame, plan: dict) -> list[dict]:
         group_by = self._resolve_group_by(df, plan)
         if not group_by:
             raise ValueError("group_by nao encontrado para contagem.")
 
         result = df.group_by(group_by, maintain_order=True).len(name="Quantidade")
         result = self._sort_and_limit(result, "Quantidade", plan, 20)
-        return result.to_dicts()
+        return self._collect_dicts(result)
 
-    def _groupby(self, df: pl.DataFrame, plan: dict, aggregation: str) -> list[dict]:
+    def _groupby(self, df: pl.LazyFrame, plan: dict, aggregation: str) -> list[dict]:
         group_by = self._resolve_group_by(df, plan)
         if not group_by:
             raise ValueError("group_by nao encontrado para groupby.")
@@ -359,19 +275,15 @@ class PolarsTools:
         if not metric:
             raise ValueError("metric nao encontrada para groupby.")
 
-        if aggregation in ["none", "count"]:
+        if aggregation in {"none", "count"}:
             aggregation = "sum"
 
         temp_df = self._to_numeric(df, metric)
-        if temp_df.is_empty():
-            return []
-
-        result = self._aggregate(temp_df, group_by, metric, aggregation)
-        numeric_columns = [column for column in result.columns if column not in group_by]
-        sort_column = numeric_columns[0] if numeric_columns else None
-
-        result = self._sort_and_limit(result, sort_column, plan, 20)
-        return result.to_dicts()
+        result = temp_df.group_by(group_by, maintain_order=True).agg(
+            self._aggregate_exprs(metric, aggregation)
+        )
+        result = self._sort_and_limit(result, metric[0], plan, 20)
+        return self._collect_dicts(result)
 
     def _datetime_expr(self, column: str) -> pl.Expr:
         text = pl.col(column).cast(pl.Utf8, strict=False)
@@ -383,7 +295,6 @@ class PolarsTools:
 
     def _period_expr(self, column: str, time_freq: str) -> pl.Expr:
         value = pl.col(column)
-
         if time_freq == "D":
             return value.dt.strftime("%Y-%m-%d")
         if time_freq == "W":
@@ -396,47 +307,32 @@ class PolarsTools:
             ])
         if time_freq == "Y":
             return value.dt.strftime("%Y")
-
         return value.dt.strftime("%Y-%m")
 
-    def _time_groupby(self, df: pl.DataFrame, plan: dict, aggregation: str) -> list[dict]:
-        time_column = (
-            self._find_column(df, plan.get("time_column"))
-            or self._find_column(df, plan.get("x"))
-        )
+    def _time_groupby(self, df: pl.LazyFrame, plan: dict, aggregation: str) -> list[dict]:
+        time_column = self._find_column(df, plan.get("time_column")) or self._find_column(df, plan.get("x"))
         if not time_column:
             raise ValueError("time_column nao encontrada para time_groupby.")
 
         time_freq = plan.get("time_freq", "M")
-        if time_freq not in ["D", "W", "M", "Q", "Y"]:
+        if time_freq not in {"D", "W", "M", "Q", "Y"}:
             time_freq = "M"
 
         temp_df = (
             df.with_columns(self._datetime_expr(time_column).alias("__time_column"))
             .drop_nulls(subset=["__time_column"])
-        )
-        if temp_df.is_empty():
-            return []
-
-        temp_df = temp_df.with_columns(
-            self._period_expr("__time_column", time_freq).alias("Periodo")
+            .with_columns(self._period_expr("__time_column", time_freq).alias("Periodo"))
         )
 
         group_columns = ["Periodo"]
         extra_group_by = self._resolve_columns(temp_df, plan.get("group_by"))
-        extra_group_by = [
+        group_columns.extend([
             column for column in extra_group_by
-            if column != time_column and column != "Periodo"
-        ]
-        group_columns.extend(extra_group_by)
+            if column not in {time_column, "Periodo"}
+        ])
 
         if aggregation == "count":
-            result = (
-                temp_df.group_by(group_columns, maintain_order=True)
-                .len(name="Quantidade")
-                .sort("Periodo")
-                .head(100)
-            )
+            result = temp_df.group_by(group_columns, maintain_order=True).len(name="Quantidade")
         else:
             metric = self._resolve_metric(temp_df, plan)
             if not metric:
@@ -445,12 +341,13 @@ class PolarsTools:
             if aggregation == "none":
                 aggregation = "sum"
 
-            temp_df = self._to_numeric(temp_df, metric)
-            if temp_df.is_empty():
-                return []
+            result = (
+                self._to_numeric(temp_df, metric)
+                .group_by(group_columns, maintain_order=True)
+                .agg(self._aggregate_exprs(metric, aggregation))
+            )
 
-            result = self._aggregate(temp_df, group_columns, metric, aggregation)
-            result = result.sort("Periodo").head(100)
+        result = result.sort("Periodo").limit(100)
 
         if len(group_columns) > 1:
             result = result.with_columns(
@@ -463,63 +360,46 @@ class PolarsTools:
                 ).alias("label")
             )
         else:
-            result = result.with_columns(
-                pl.col("Periodo").cast(pl.Utf8).alias("label")
-            )
+            result = result.with_columns(pl.col("Periodo").cast(pl.Utf8).alias("label"))
 
-        return result.to_dicts()
+        return self._collect_dicts(result)
 
-    def _scatter(self, df: pl.DataFrame, plan: dict) -> list[dict]:
+    def _scatter(self, df: pl.LazyFrame, plan: dict) -> list[dict]:
         x = self._find_column(df, plan.get("x"))
         y = self._find_column(df, plan.get("y"))
-
         if not x or not y:
             raise ValueError("x ou y nao encontrado para scatter.")
 
-        temp_df = self._to_numeric(df, [x, y])
-        if temp_df.is_empty():
-            return []
+        temp_df = self._to_numeric(df, [x, y]).select([x, y])
+        return self._collect_dicts(
+            temp_df.limit(self._limit_value(plan, 100, 500))
+        )
 
-        limit = plan.get("limit", 100)
-        try:
-            limit = int(limit)
-        except Exception:
-            limit = 100
-
-        limit = max(1, min(limit, 500))
-        return temp_df.select([x, y]).head(limit).to_dicts()
-
-    def _kpi(self, df: pl.DataFrame, plan: dict, aggregation: str) -> list[dict]:
+    def _kpi(self, df: pl.LazyFrame, plan: dict, aggregation: str) -> list[dict]:
         metric = self._resolve_metric(df, plan)
         if not metric:
             raise ValueError("metric nao encontrada para kpi.")
 
         column = metric[0]
         temp_df = self._to_numeric(df, [column])
-        if temp_df.is_empty():
-            return []
 
         if aggregation == "mean":
-            value = temp_df.select(pl.col(column).mean()).item()
+            expr = pl.col(column).mean()
         elif aggregation == "max":
-            value = temp_df.select(pl.col(column).max()).item()
+            expr = pl.col(column).max()
         elif aggregation == "min":
-            value = temp_df.select(pl.col(column).min()).item()
+            expr = pl.col(column).min()
         elif aggregation == "median":
-            value = temp_df.select(pl.col(column).median()).item()
+            expr = pl.col(column).median()
         elif aggregation == "count":
-            value = temp_df.select(pl.col(column).count()).item()
+            expr = pl.col(column).count()
         else:
-            value = temp_df.select(pl.col(column).sum()).item()
+            expr = pl.col(column).sum()
 
+        value = temp_df.select(expr.alias("value")).collect().item()
         return [{"label": plan.get("title", column), column: value}]
 
-    def _table(self, df: pl.DataFrame, plan: dict) -> list[dict]:
-        limit = plan.get("limit", 50)
-        try:
-            limit = int(limit)
-        except Exception:
-            limit = 50
-
-        limit = max(1, min(limit, 200))
-        return df.head(limit).to_dicts()
+    def _table(self, df: pl.LazyFrame, plan: dict) -> list[dict]:
+        return self._collect_dicts(
+            df.limit(self._limit_value(plan, 50, 200))
+        )
