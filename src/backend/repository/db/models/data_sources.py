@@ -24,6 +24,7 @@ class DataSource(Base):
     column_count: Mapped[int] = mapped_column(Integer)
     source_type: Mapped[str] = mapped_column(String(20), server_default="file")
     connection_config: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    sql_query: Mapped[str | None] = mapped_column(Text)
     refresh_interval_days: Mapped[int | None] = mapped_column(Integer)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
     next_sync_at: Mapped[datetime | None] = mapped_column(DateTime)
