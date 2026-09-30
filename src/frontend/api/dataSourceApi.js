@@ -13,26 +13,36 @@ async function parseResponse(response, fallbackMessage) {
   }
 
   if (!response.ok) {
-    const message =
+    let message =
       data?.detail ||
       data?.message ||
       data?.error ||
       text ||
       fallbackMessage;
 
+    if (typeof message !== "string") {
+      message = JSON.stringify(message);
+    }
+
     if (isSessionExpiredError(message, response.status)) {
       handleExpiredSession(message);
     }
 
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
 
   return data || {};
 }
 
-async function safeFetch(url, options, fallbackMessage) {
+async function safeFetch(url, options = {}, fallbackMessage) {
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, {
+      credentials: "include",
+      ...options,
+    });
+
     return await parseResponse(response, fallbackMessage);
   } catch (error) {
     if (
@@ -49,8 +59,16 @@ async function safeFetch(url, options, fallbackMessage) {
   }
 }
 
+function normalizeRefreshInterval(value) {
+  if (value === "" || value === undefined || value === null) {
+    return null;
+  }
+
+  return Number(value);
+}
+
 export async function createDataSource({
-  token,
+  token: _token,
   name,
   sourceType = "file",
   file,
@@ -60,31 +78,60 @@ export async function createDataSource({
   query,
   refreshIntervalDays,
 }) {
-  const formData = new FormData();
-
-  formData.append("token", token);
-  formData.append("name", name);
-  formData.append("source_type", sourceType);
-
-  if (refreshIntervalDays) {
-    formData.append("refresh_interval_days", String(refreshIntervalDays));
-  }
-
-  if (sourceType === "file" && file) {
+  if (sourceType === "file") {
+    const formData = new FormData();
+    formData.append("name", name);
     formData.append("file", file);
-  }
 
-  if (sourceType === "web") {
-    formData.append("api_url", apiUrl || "");
-
-    if (apiPayload !== undefined) {
-      formData.append("api_payload", JSON.stringify(apiPayload));
-    }
+    return safeFetch(
+      `${ACCOUNTS_URL}/data-sources/file`,
+      {
+        method: "POST",
+        body: formData,
+      },
+      "Erro ao enviar arquivo."
+    );
   }
 
   if (sourceType === "database") {
-    formData.append("database_url", databaseUrl || "");
-    formData.append("query", query || "");
+    return safeFetch(
+      `${ACCOUNTS_URL}/data-sources/sql`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          database_url: databaseUrl,
+          query,
+          refresh_interval_days: normalizeRefreshInterval(
+            refreshIntervalDays
+          ),
+        }),
+      },
+      "Erro ao criar fonte SQL."
+    );
+  }
+
+  const formData = new FormData();
+  formData.append("token", _token || "");
+  formData.append("name", name);
+  formData.append("source_type", "web");
+  formData.append("api_url", apiUrl || "");
+
+  if (refreshIntervalDays) {
+    formData.append(
+      "refresh_interval_days",
+      String(refreshIntervalDays)
+    );
+  }
+
+  if (apiPayload !== undefined) {
+    formData.append(
+      "api_payload",
+      JSON.stringify(apiPayload)
+    );
   }
 
   return safeFetch(
@@ -93,36 +140,25 @@ export async function createDataSource({
       method: "POST",
       body: formData,
     },
-    "Erro ao criar fonte de dados."
+    "Erro ao criar fonte web."
   );
 }
 
-export async function getDataSources(token) {
+export async function getDataSources(_token) {
   return safeFetch(
-    `${ACCOUNTS_URL}/data-sources`,
+    `${ACCOUNTS_URL}/data-sources/`,
     {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ token }),
+      method: "GET",
     },
     "Erro ao buscar fontes de dados."
   );
 }
 
-export async function getDataSource(token, data_source_id) {
+export async function getDataSource(_token, data_source_id) {
   return safeFetch(
-    `${ACCOUNTS_URL}/data-source`,
+    `${ACCOUNTS_URL}/data-sources/${Number(data_source_id)}`,
     {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        token,
-        data_source_id: Number(data_source_id),
-      }),
+      method: "GET",
     },
     "Erro ao abrir fonte de dados."
   );
@@ -146,7 +182,7 @@ export async function getLinkedDashboards(token, data_source_id) {
 }
 
 export async function updateDataSource({
-  token,
+  token: _token,
   data_source_id,
   sourceType,
   file,
@@ -157,22 +193,59 @@ export async function updateDataSource({
   refreshIntervalDays,
   refreshDashboards = false,
 }) {
-  const formData = new FormData();
+  const sourceId = Number(data_source_id);
 
-  formData.append("token", token);
-  formData.append("data_source_id", Number(data_source_id));
-  formData.append("refresh_dashboards", String(refreshDashboards));
+  if (sourceType === "file") {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    return safeFetch(
+      `${ACCOUNTS_URL}/data-sources/file?data_source_id=${sourceId}`,
+      {
+        method: "PATCH",
+        body: formData,
+      },
+      "Erro ao atualizar arquivo."
+    );
+  }
+
+  if (sourceType === "database") {
+    return safeFetch(
+      `${ACCOUNTS_URL}/data-sources/sql?data_source_id=${sourceId}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          database_url: databaseUrl,
+          query,
+          refresh_interval_days: normalizeRefreshInterval(
+            refreshIntervalDays
+          ),
+        }),
+      },
+      "Erro ao atualizar fonte SQL."
+    );
+  }
+
+  const formData = new FormData();
+  formData.append("token", _token || "");
+  formData.append("data_source_id", sourceId);
+  formData.append(
+    "refresh_dashboards",
+    String(refreshDashboards)
+  );
 
   if (sourceType) {
     formData.append("source_type", sourceType);
   }
 
   if (refreshIntervalDays) {
-    formData.append("refresh_interval_days", String(refreshIntervalDays));
-  }
-
-  if (file) {
-    formData.append("file", file);
+    formData.append(
+      "refresh_interval_days",
+      String(refreshIntervalDays)
+    );
   }
 
   if (apiUrl !== undefined) {
@@ -180,15 +253,10 @@ export async function updateDataSource({
   }
 
   if (apiPayload !== undefined) {
-    formData.append("api_payload", JSON.stringify(apiPayload));
-  }
-
-  if (databaseUrl !== undefined) {
-    formData.append("database_url", databaseUrl || "");
-  }
-
-  if (query !== undefined) {
-    formData.append("query", query || "");
+    formData.append(
+      "api_payload",
+      JSON.stringify(apiPayload)
+    );
   }
 
   return safeFetch(
@@ -197,44 +265,60 @@ export async function updateDataSource({
       method: "PATCH",
       body: formData,
     },
-    "Erro ao atualizar fonte de dados."
+    "Erro ao atualizar fonte web."
+  );
+}
+
+export async function executeSqlDataSource({
+  data_source_id,
+  query,
+  saveQuery = false,
+}) {
+  const sourceId = Number(data_source_id);
+
+  return safeFetch(
+    `${ACCOUNTS_URL}/data-sources/sql/execute?data_source_id=${sourceId}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: query || null,
+        save_query: Boolean(saveQuery),
+      }),
+    },
+    "Erro ao executar consulta SQL."
   );
 }
 
 export async function renameDataSource({
-  token,
+  token: _token,
   data_source_id,
   name,
 }) {
   return safeFetch(
-    `${ACCOUNTS_URL}/data-source/rename`,
+    `${ACCOUNTS_URL}/data-sources/?data_source_id=${Number(
+      data_source_id
+    )}`,
     {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        token,
-        data_source_id: Number(data_source_id),
-        name,
-      }),
+      body: JSON.stringify({ name }),
     },
     "Erro ao renomear fonte de dados."
   );
 }
 
-export async function deleteDataSource(token, data_source_id) {
+export async function deleteDataSource(_token, data_source_id) {
   return safeFetch(
-    `${ACCOUNTS_URL}/data-source`,
+    `${ACCOUNTS_URL}/data-sources/?data_source_id=${Number(
+      data_source_id
+    )}`,
     {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        token,
-        data_source_id: Number(data_source_id),
-      }),
     },
     "Erro ao deletar fonte de dados."
   );
