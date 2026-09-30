@@ -1,0 +1,2 @@
+ALTER TABLE data_sources
+ADD COLUMN IF NOT EXISTS sql_query TEXT;
