@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
 from src.backend.controller.schema.auth import LoginResponse
-from src.backend.controller.schema.users import UserCreate, UserUpdate
+from src.backend.controller.schema.users import UserCreate, UserResponse, UserUpdate
 from src.backend.controller.session import create_session
 from src.backend.service.db.repository import control_repository
 from src.backend.service.manage import control_db, hash
@@ -67,14 +67,14 @@ async def create_user(
     return await create_session(response, user)
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserResponse)
 async def get_me(
     current_user: dict[str, Any] = Depends(get_current_user),
 ):
     return current_user
 
 
-@router.patch("/me")
+@router.patch("/me", response_model=UserResponse)
 async def update_me(
     data: UserUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
