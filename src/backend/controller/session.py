@@ -89,7 +89,7 @@ async def create_session(
     }
 
 
-async def read_refresh_token(request: Request) -> dict[str, Any]:
+async def consume_refresh_token(request: Request) -> dict[str, Any]:
     token = request.cookies.get(REFRESH_COOKIE)
 
     if not token:
@@ -126,7 +126,7 @@ async def read_refresh_token(request: Request) -> dict[str, Any]:
             detail="Invalid refresh token claims",
         )
 
-    stored_user_id = await redis.get(f"refresh_token:{jti}")
+    stored_user_id = await redis.getdel(f"refresh_token:{jti}")
     if stored_user_id is None or str(stored_user_id) != str(user_id):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
