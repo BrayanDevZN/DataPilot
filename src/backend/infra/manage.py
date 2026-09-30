@@ -19,7 +19,11 @@ class Infrastructure:
         self.settings = settings
         self.email_files = EmailFiles()
         self.prompts = PromptFiles()
-        self.redis = RedisConnection()
+        self.redis = RedisConnection(
+            host=settings.redis_host,
+            port=settings.redis_port,
+            db=settings.redis_db,
+        )
         self.celery_connection = CeleryConnection(
             broker=settings.celery_broker_url,
             backend=settings.celery_backend_url,
