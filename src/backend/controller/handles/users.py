@@ -9,8 +9,7 @@ from src.backend.controller.dependencies import get_current_user, get_session
 from src.backend.controller.schema.auth import LoginResponse
 from src.backend.controller.schema.users import UserCreate, UserResponse, UserUpdate
 from src.backend.controller.session import create_session
-from src.backend.service.db.repository import control_repository
-from src.backend.service.manage import control_db, hash
+from src.backend.service.manage import control_db, hash, verification_codes
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -43,11 +42,13 @@ async def create_user(
     if await control_db.users.get(session, "username", username) is not None:
         raise HTTPException(status_code=409, detail="Username already registered")
 
-    consumed = await control_repository(
-        session,
-    ).validation_account.db.consume(email, code)
+    consumed = await verification_codes.consume(
+        "create_account",
+        email,
+        code,
+    )
 
-    if not consumed["consumed"]:
+    if not consumed:
         raise HTTPException(
             status_code=400,
             detail="Invalid or expired verification code",
