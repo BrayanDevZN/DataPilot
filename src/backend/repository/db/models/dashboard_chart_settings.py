@@ -1,10 +1,15 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base
+
+if TYPE_CHECKING:
+    from .dashboard_charts import DashboardChart
+    from .dashboards import Dashboard
 
 
 class DashboardChartSettings(Base):
@@ -23,3 +28,11 @@ class DashboardChartSettings(Base):
     pie_colors: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     show_legend: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    dashboard: Mapped["Dashboard"] = relationship(
+        "Dashboard", back_populates="chart_settings", foreign_keys="DashboardChartSettings.dashboard_id", lazy="raise",
+    )
+
+    chart: Mapped["DashboardChart | None"] = relationship(
+        "DashboardChart", back_populates="settings", foreign_keys="DashboardChartSettings.chart_id", lazy="raise",
+    )

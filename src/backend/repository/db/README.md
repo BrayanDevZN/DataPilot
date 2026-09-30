@@ -43,3 +43,26 @@ logs; falhas são propagadas. A classe usa o engine recebido e não o encerra.
 `checkfirst=True` evita recriar tabelas existentes. Este processo cria tabelas
 ausentes, mas não altera colunas ou constraints de tabelas existentes; evolução
 versionada do esquema exige migrations específicas.
+
+## Relacionamentos
+
+Os models têm relações bidirecionais com `back_populates`. Exemplos:
+`User.conversations`, `Conversation.messages`, `DataSource.dashboards`,
+`Dashboard.charts`, `Dashboard.collaborations`, `DashboardChart.settings`.
+A colaboração diferencia `owner` e `collaborator` com suas respectivas chaves.
+`ValidationAccount` permanece sem relação com usuário, pois antecede o cadastro.
+
+Use carregamento explícito nas consultas assíncronas:
+
+```python
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from src.backend.repository.db.models import Dashboard
+
+query = select(Dashboard).options(selectinload(Dashboard.charts))
+```
+
+`lazy="raise"` impede consultas implícitas ao acessar uma relação não carregada.
+`passive_deletes="all"` nas relações parentais delega as ações de exclusão às
+foreign keys do banco, sem adicionar regras de delete-orphan no ORM. A estrutura
+de colunas/constraints permanece igual; relationships não exigem migration.

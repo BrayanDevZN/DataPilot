@@ -1,9 +1,18 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Text, func, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base
+
+if TYPE_CHECKING:
+    from .collaboration_notifications import CollaborationNotification
+    from .dashboard_chart_settings import DashboardChartSettings
+    from .dashboard_charts import DashboardChart
+    from .dashboard_collaborations import DashboardCollaboration
+    from .data_sources import DataSource
+    from .users import User
 
 
 class Dashboard(Base):
@@ -19,3 +28,31 @@ class Dashboard(Base):
     is_outdated: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship(
+        "User", back_populates="dashboards", foreign_keys="Dashboard.user_id", lazy="raise",
+    )
+
+    data_source: Mapped["DataSource | None"] = relationship(
+        "DataSource", back_populates="dashboards", foreign_keys="Dashboard.data_source_id", lazy="raise",
+    )
+
+    charts: Mapped[list["DashboardChart"]] = relationship(
+        "DashboardChart", back_populates="dashboard", foreign_keys="DashboardChart.dashboard_id",
+        lazy="raise", passive_deletes="all",
+    )
+
+    chart_settings: Mapped[list["DashboardChartSettings"]] = relationship(
+        "DashboardChartSettings", back_populates="dashboard", foreign_keys="DashboardChartSettings.dashboard_id",
+        lazy="raise", passive_deletes="all",
+    )
+
+    collaborations: Mapped[list["DashboardCollaboration"]] = relationship(
+        "DashboardCollaboration", back_populates="dashboard", foreign_keys="DashboardCollaboration.dashboard_id",
+        lazy="raise", passive_deletes="all",
+    )
+
+    notifications: Mapped[list["CollaborationNotification"]] = relationship(
+        "CollaborationNotification", back_populates="dashboard", foreign_keys="CollaborationNotification.dashboard_id",
+        lazy="raise", passive_deletes="all",
+    )

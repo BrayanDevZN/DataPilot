@@ -1,10 +1,15 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base
+
+if TYPE_CHECKING:
+    from .dashboards import Dashboard
+    from .users import User
 
 
 class DataSource(Base):
@@ -26,3 +31,12 @@ class DataSource(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (CheckConstraint("source_type IN ('file', 'web', 'database')", name="data_sources_source_type_check"),)
+
+    user: Mapped["User"] = relationship(
+        "User", back_populates="data_sources", foreign_keys="DataSource.user_id", lazy="raise",
+    )
+
+    dashboards: Mapped[list["Dashboard"]] = relationship(
+        "Dashboard", back_populates="data_source", foreign_keys="Dashboard.data_source_id",
+        lazy="raise", passive_deletes="all",
+    )
