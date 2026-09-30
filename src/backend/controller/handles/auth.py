@@ -18,8 +18,12 @@ from src.backend.controller.session import (
     create_session,
     consume_refresh_token,
 )
-from src.backend.service.db.repository import control_repository
-from src.backend.service.manage import control_db, hash, sender
+from src.backend.service.manage import (
+    control_db,
+    hash,
+    sender,
+    verification_codes,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -59,17 +63,22 @@ async def login(
         )
 
     if user.get("auth2", False):
-        repository = control_repository(session)
-
         if data.code is None:
             response.status_code = status.HTTP_202_ACCEPTED
-            code = _code()
-
-            await repository.validation.db.issue(
-                user["user_id"],
-                code,
+            code = await verification_codes.issue(
+                "auth2",
+                user["email"],
+                expire=None,
             )
-            await sender.auth2(user["email"], code)
+
+            try:
+                await sender.auth2(user["email"], code)
+            except Exception:
+                await verification_codes.delete(
+                    "auth2",
+                    user["email"],
+                )
+                raise
 
             return {
                 "authenticated": False,
@@ -79,12 +88,13 @@ async def login(
                 "user": None,
             }
 
-        consumed = await repository.validation.db.consume(
-            user["user_id"],
+        consumed = await verification_codes.consume(
+            "auth2",
+            user["email"],
             data.code,
         )
 
-        if not consumed["consumed"]:
+        if not consumed:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired two-factor code",
