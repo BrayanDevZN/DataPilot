@@ -420,7 +420,7 @@ export default function DataSources() {
     setUpdateFile(null);
     setUpdateApiUrl(config.url || "");
     setUpdateDatabaseConnection(parseDatabaseUrl(config.database_url || ""));
-    setUpdateDatabaseQuery(config.query || "");
+    setUpdateDatabaseQuery(selectedSource.sql_query || config.query || "");
     setUpdateRefreshIntervalDays(selectedSource.refresh_interval_days || "");
     setShowUpdateModal(true);
   }
@@ -780,7 +780,7 @@ export default function DataSources() {
             <label className="custom-file-upload">
               <input
                 type="file"
-                accept=".csv,.xlsx,.xls,.json"
+                accept=".csv,.xlsx,.xls,.json,.parquet"
                 onChange={(event) => onFileChange(event.target.files[0])}
               />
               <UploadCloud size={18} />
