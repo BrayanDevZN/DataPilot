@@ -7,6 +7,7 @@ from .dashboard_collaborations import router as dashboard_collaborations_router
 from .dashboards import router as dashboards_router
 from .data_sources import router as data_sources_router
 from .messages import router as messages_router
+from .sender import router as sender_router
 from .users import router as users_router
 from .validation import router as validation_router
 from .validation_account import router as validation_account_router
@@ -19,6 +20,7 @@ routers = (
     validation_account_router,
     conversations_router,
     messages_router,
+    sender_router,
     data_sources_router,
     dashboards_router,
     dashboard_charts_router,
@@ -45,6 +47,7 @@ __all__ = [
     "validation_account_router",
     "conversations_router",
     "messages_router",
+    "sender_router",
     "data_sources_router",
     "dashboards_router",
     "dashboard_charts_router",
