@@ -1,11 +1,14 @@
 """Public routes for DataPilot transactional emails."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_session
+from src.backend.controller.session import (
+    clear_auth2_user_cookie,
+    read_auth2_user_cookie,
+)
 from src.backend.controller.schema.sender import (
-    Auth2EmailRequest,
     ChangePasswordEmailRequest,
     CreateAccountEmailRequest,
     SenderResponse,
@@ -105,29 +108,24 @@ async def send_change_password_email(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def send_auth2_email(
-    data: Auth2EmailRequest,
-    session: AsyncSession = Depends(get_session),
+    request: Request,
+    response: Response,
 ):
-    email = str(data.email).strip().lower()
-    user = await control_db.users.get(session, "email", email)
+    try:
+        claims = read_auth2_user_cookie(request)
+    except HTTPException:
+        clear_auth2_user_cookie(response)
+        raise
 
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    if not user.get("auth2", False):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Two-factor authentication is not enabled for this user",
-        )
+    email = str(claims["email"]).strip().lower()
 
     await _issue_and_send(
         "auth2",
         email,
         sender.auth2,
     )
+
+    clear_auth2_user_cookie(response)
 
     return {
         "sent": True,
