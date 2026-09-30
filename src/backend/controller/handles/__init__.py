@@ -36,6 +36,9 @@ PUBLIC_ROUTES = {
     "/users",
     "/validation-accounts",
     "/validation-accounts/consume",
+    "/sender/create-account",
+    "/sender/change-password",
+    "/sender/auth2",
 }
 
 __all__ = [
