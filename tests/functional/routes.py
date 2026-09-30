@@ -566,6 +566,30 @@ def main() -> None:
         json={"identifier": email, "password": password, "code": code},
     )
 
+    call(
+        session,
+        "DELETE",
+        f"/collaboration-notifications/?notification_id={notification_id}",
+        200,
+    )
+    call(
+        session,
+        "DELETE",
+        f"/dashboard-collaborations/?collaboration_id={collaboration_id}",
+        200,
+    )
+    call(
+        session,
+        "DELETE",
+        f"/dashboard-chart-settings/?setting_id={setting_id}",
+        200,
+    )
+    call(
+        session,
+        "DELETE",
+        f"/dashboard-charts/?chart_id={chart_id}",
+        200,
+    )
     call(session, "DELETE", f"/messages/?message_id={message_id}", 200)
     call(
         session,
