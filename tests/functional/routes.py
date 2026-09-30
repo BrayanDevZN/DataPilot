@@ -188,6 +188,34 @@ def main() -> None:
         data={"name": "Functional CSV Replaced"},
         files={"file": ("functional.csv", io.BytesIO(csv_data), "text/csv")},
     )
+    call(
+        session,
+        "POST",
+        "/data-sources/sql",
+        400,
+        json={
+            "name": "Invalid SQL source",
+            "database_url": "sqlite+aiosqlite:///tmp/test.db",
+            "query": "SELECT 1",
+        },
+    )
+    call(
+        session,
+        "PATCH",
+        f"/data-sources/sql?data_source_id={source_id}",
+        400,
+        json={
+            "database_url": "sqlite+aiosqlite:///tmp/test.db",
+            "query": "SELECT 1",
+        },
+    )
+    call(
+        session,
+        "POST",
+        f"/data-sources/sql/execute?data_source_id={source_id}",
+        400,
+        json={"query": "SELECT 1", "save_query": False},
+    )
 
     call(
         session,
