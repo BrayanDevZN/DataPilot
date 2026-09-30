@@ -1,20 +1,20 @@
-"""HTTP middleware for global and per-client rate limiting."""
+"""HTTP middleware for authentication-aware rate limiting."""
 
-from hashlib import sha256
 from time import time
 from typing import Iterable
 
+from fastapi import HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from src.backend.domain.module import InvalidTokenError
+from src.backend.domain.module import ExpiredTokenError, InvalidTokenError
 from src.backend.logs.log import logger
 from src.backend.service.manage import jwt, redis
 
 
 class Middleware(BaseHTTPMiddleware):
-    """Apply global and client-scoped rate limits to every HTTP request."""
+    """Apply global/client rate limits and reject invalid private requests."""
 
     def __init__(
         self,
@@ -49,15 +49,27 @@ class Middleware(BaseHTTPMiddleware):
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
+        try:
+            return await self._dispatch(request, call_next)
+        except HTTPException as error:
+            return JSONResponse(
+                status_code=error.status_code,
+                content={"detail": error.detail},
+                headers=error.headers,
+            )
+
+    async def _dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
         global_limit, rate_limit = await self._load_limits()
 
-        global_count = await self._increment(
-            self._global_key(),
-        )
+        global_count = await self._increment(self._global_key())
 
         if global_count > global_limit:
             logger.warning("Rate limit global excedido")
-            return self._too_many_requests(
+            self._raise_rate_limit(
                 limit=global_limit,
                 scope="global",
             )
@@ -78,7 +90,7 @@ class Middleware(BaseHTTPMiddleware):
                 "Rate limit excedido para escopo %s",
                 "public" if is_public else "private",
             )
-            return self._too_many_requests(
+            self._raise_rate_limit(
                 limit=rate_limit,
                 scope="public" if is_public else "private",
             )
@@ -96,11 +108,9 @@ class Middleware(BaseHTTPMiddleware):
         return response
 
     def _is_public_route(self, request: Request) -> bool:
-        """Return whether the current path is configured as public."""
         return self._normalize_path(request.url.path) in self.public_routes
 
     def _private_identity(self, request: Request) -> str:
-        """Prefer a validated JWT user identity for private routes."""
         token = request.cookies.get("access_token")
 
         if not token:
@@ -109,27 +119,49 @@ class Middleware(BaseHTTPMiddleware):
             if scheme.lower() == "bearer" and bearer.strip():
                 token = bearer.strip()
 
-        if token:
-            try:
-                claims = jwt.read(token)
-            except InvalidTokenError:
-                return f"token:{self._token_fingerprint(token)}"
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication token required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
-            if claims.get("token_type") == "access":
-                for claim in ("public_id", "user_id", "sub"):
-                    value = claims.get(claim)
-                    if value is not None:
-                        return str(value)
+        try:
+            claims = jwt.read(token)
+        except ExpiredTokenError as error:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication token expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from error
+        except InvalidTokenError as error:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication token",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from error
 
-            return f"token:{self._token_fingerprint(token)}"
+        if claims.get("token_type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid access token type",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
-        return f"ip:{self._client_ip(request)}"
+        for claim in ("public_id", "user_id", "sub"):
+            value = claims.get(claim)
+            if value is not None:
+                return str(value)
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token does not identify a user",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     def _client_ip(self, request: Request) -> str:
-        """Resolve the client IP, respecting common reverse-proxy headers."""
         if self.trust_proxy_headers:
             forwarded = request.headers.get("x-forwarded-for")
-
             if forwarded:
                 return forwarded.split(",", 1)[0].strip()
 
@@ -140,10 +172,12 @@ class Middleware(BaseHTTPMiddleware):
         if request.client:
             return request.client.host
 
-        return "unknown"
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to identify client IP",
+        )
 
     async def _load_limits(self) -> tuple[int, int]:
-        """Initialize rate-limit configuration in Redis and read it back."""
         global_key = "rate_limit:config:global_limit"
         client_key = "rate_limit:config:client_limit"
 
@@ -182,7 +216,6 @@ class Middleware(BaseHTTPMiddleware):
         global_limit: int | None = None,
         rate_limit: int | None = None,
     ) -> None:
-        """Persist rate-limit configuration in Redis."""
         if global_limit is not None and global_limit <= 0:
             raise ValueError("global_limit must be positive")
         if rate_limit is not None and rate_limit <= 0:
@@ -218,7 +251,6 @@ class Middleware(BaseHTTPMiddleware):
         return self.window_seconds - elapsed
 
     async def _increment(self, key: str) -> int:
-        """Atomically increment a fixed-window Redis counter."""
         async with redis.pipeline(transaction=True) as pipeline:
             pipeline.incr(key)
             pipeline.expire(key, self.window_seconds + 1)
@@ -226,18 +258,18 @@ class Middleware(BaseHTTPMiddleware):
 
         return int(result[0])
 
-    def _too_many_requests(
+    def _raise_rate_limit(
         self,
         *,
         limit: int,
         scope: str,
-    ) -> JSONResponse:
+    ) -> None:
         retry_after = self._seconds_until_reset()
 
-        return JSONResponse(
-            status_code=429,
-            content={
-                "detail": "Rate limit exceeded",
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "message": "Rate limit exceeded",
                 "scope": scope,
                 "retry_after": retry_after,
             },
@@ -255,8 +287,4 @@ class Middleware(BaseHTTPMiddleware):
             return "/"
 
         normalized = "/" + path.strip("/")
-        return normalized if normalized != "" else "/"
-
-    @staticmethod
-    def _token_fingerprint(token: str) -> str:
-        return sha256(token.encode("utf-8")).hexdigest()
+        return normalized if normalized else "/"
