@@ -293,8 +293,8 @@ async def update_data_source_metadata(
 
 @router.patch("/file")
 async def update_file_data_source(
-    data_source_id: int = Query(..., gt=0),
     file: Annotated[UploadFile, File()],
+    data_source_id: int = Query(..., gt=0),
     name: Annotated[str | None, Form(max_length=300)] = None,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
