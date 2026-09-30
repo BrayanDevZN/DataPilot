@@ -1,6 +1,6 @@
 """Schemas for authentication routes."""
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .common import StrictSchema
 
@@ -19,6 +19,12 @@ class LoginRequest(StrictSchema):
         if len(value) != 6 or not value.isascii() or not value.isdigit():
             raise ValueError("code must contain six digits")
         return value
+
+    @model_validator(mode="after")
+    def validate_auth2_contract(self):
+        if not self.auth2 and self.code is not None:
+            raise ValueError("code is only accepted when auth2 is true")
+        return self
 
 
 class LoginResponse(StrictSchema):
