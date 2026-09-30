@@ -110,10 +110,10 @@ class Middleware(BaseHTTPMiddleware):
             except InvalidTokenError:
                 return f"token:{self._token_fingerprint(token)}"
 
-            for claim in ("user_id", "public_id", "sub"):
+            for claim in ("public_id", "user_id", "sub"):
                 value = claims.get(claim)
                 if value is not None:
-                    return f"user:{value}"
+                    return str(value)
 
             return f"token:{self._token_fingerprint(token)}"
 
@@ -202,11 +202,7 @@ class Middleware(BaseHTTPMiddleware):
         return f"rate_limit:global:{self._window_id()}"
 
     def _client_key(self, identity: str) -> str:
-        path_safe_identity = sha256(identity.encode("utf-8")).hexdigest()
-        return (
-            f"rate_limit:client:{path_safe_identity}:"
-            f"{self._window_id()}"
-        )
+        return f"rate_limit:{identity}"
 
     def _window_id(self) -> int:
         return int(time() // self.window_seconds)
