@@ -45,6 +45,8 @@ class Settings:
     db_connect_timeout: int = 10
     email_timeout: int = 30
     url_sender: str = "http://api:8000"
+    celery_broker_url: str = "redis://redis-celery:6379/0"
+    celery_backend_url: str = "redis://redis-celery:6379/0"
     url_email: str | None = None
     secret: str | None = field(default=None, repr=False)
     sing: str | None = field(default=None, repr=False)
@@ -64,6 +66,8 @@ class Settings:
             db_connect_timeout=positive_int("DB_CONNECT_TIMEOUT", 10),
             email_timeout=positive_int("EMAIL_TIMEOUT", 30),
             url_sender=os.getenv("URL_SENDER") or "http://api:8000",
+            celery_broker_url=os.getenv("CELERY_BROKER_URL") or "redis://redis-celery:6379/0",
+            celery_backend_url=os.getenv("CELERY_BACKEND_URL") or "redis://redis-celery:6379/0",
             url_email=os.getenv("URL_EMAIL"),
             secret=os.getenv("SECRET"),
             sing=os.getenv("SING"),
