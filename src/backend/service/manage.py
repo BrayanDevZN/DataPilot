@@ -7,10 +7,12 @@ from .auth import ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL, hash, jwt, refresh_jwt
 from .db.migrate import make_migrate
 from .db.control import control_db
 from .sender import Sender
+from .verification_codes import VerificationCodes
 
 redis = redis_connection.client
 cache = Cache(redis)
 sender = Sender()
+verification_codes = VerificationCodes(cache)
 
 __all__ = [
     "control_db",
@@ -20,6 +22,7 @@ __all__ = [
     "ACCESS_TOKEN_TTL",
     "REFRESH_TOKEN_TTL",
     "sender",
+    "verification_codes",
     "redis",
     "cache",
     "make_migrate",
