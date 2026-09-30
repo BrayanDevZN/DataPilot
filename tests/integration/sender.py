@@ -1,38 +1,52 @@
-"""Run: python tests/integration/sender.py.
+"""Run: python tests/integration/sender.py."""
 
-Sends two real HTML emails to EMAIL_USER using EMAIL_PASSWORD from the infra
-configuration. Codes are test data and are not saved as account validations.
-"""
-
-import secrets
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.backend.infra.manage import settings
 from src.backend.service.sender import Sender
 
 
 class SenderTests(unittest.IsolatedAsyncioTestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        if not settings.email_user or not settings.email_password:
-            raise RuntimeError(
-                "Configure EMAIL_USER and EMAIL_PASSWORD in the infra .env "
-                "or project root .env before running the real email tests"
+    async def test_create_account_html(self) -> None:
+        transport = AsyncMock(return_value={"sent": True})
+
+        with patch(
+            "src.backend.service.sender.sender.send",
+            transport,
+        ):
+            result = await Sender().create_account(
+                "test@example.com",
+                "123456",
             )
 
-    async def test_create_account_html(self) -> None:
-        code = f"{secrets.randbelow(1_000_000):06d}"
-        result = await Sender().create_account(settings.email_user, code)
         self.assertEqual(result, {"sent": True})
+        args = transport.await_args.args
+        self.assertEqual(args[0], "test@example.com")
+        self.assertIn("123456", args[2])
 
-    async def test_change_password_html(self) -> None:
-        code = f"{secrets.randbelow(1_000_000):06d}"
-        result = await Sender().change_password(settings.email_user, code)
-        self.assertEqual(result, {"sent": True})
+    async def test_change_password_and_auth2_html(self) -> None:
+        transport = AsyncMock(return_value={"sent": True})
+
+        with patch(
+            "src.backend.service.sender.sender.send",
+            transport,
+        ):
+            change = await Sender().change_password(
+                "test@example.com",
+                "654321",
+            )
+            auth2 = await Sender().auth2(
+                "test@example.com",
+                "111222",
+            )
+
+        self.assertEqual(change, {"sent": True})
+        self.assertEqual(auth2, {"sent": True})
+        self.assertEqual(transport.await_count, 2)
 
 
 if __name__ == "__main__":
