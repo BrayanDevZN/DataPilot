@@ -12,6 +12,7 @@ from .auth import (
     jwt,
     refresh_jwt,
 )
+from .dashboard_pipeline import DashboardAgentPipeline
 from .db.migrate import make_migrate
 from .db.control import control_db
 from .sender import Sender
@@ -21,6 +22,7 @@ redis = redis_connection.client
 cache = Cache(redis)
 sender = Sender()
 verification_codes = VerificationCodes(cache)
+dashboard_pipeline = DashboardAgentPipeline(cache)
 
 __all__ = [
     "control_db",
@@ -33,6 +35,7 @@ __all__ = [
     "AUTH2_USER_TTL",
     "sender",
     "verification_codes",
+    "dashboard_pipeline",
     "redis",
     "cache",
     "make_migrate",
