@@ -2,19 +2,13 @@
 
 from typing import Literal
 
-from pydantic import EmailStr, field_validator
+from pydantic import EmailStr
 
-from .common import StrictSchema, normalize_verification_code
+from .common import StrictSchema
 
 
 class SenderBaseRequest(StrictSchema):
     email: EmailStr
-    code: str
-
-    @field_validator("code", mode="before")
-    @classmethod
-    def validate_code(cls, value) -> str:
-        return normalize_verification_code(value)
 
 
 class CreateAccountEmailRequest(SenderBaseRequest):
@@ -33,3 +27,4 @@ class SenderResponse(StrictSchema):
     sent: bool
     type: Literal["create_account", "change_password", "auth2"]
     email: EmailStr
+    expires_in: int
