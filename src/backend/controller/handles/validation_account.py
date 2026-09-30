@@ -23,7 +23,7 @@ def _code() -> str:
     return f"{randbelow(1_000_000):06d}"
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def issue_account_validation(
     data: ValidationAccountIssue,
     session: AsyncSession = Depends(get_session),
