@@ -5,7 +5,6 @@ from typing import Any
 from fastapi import HTTPException, Request, status
 
 from src.backend.controller.session import ACCESS_COOKIE
-from src.backend.controller.session import ACCESS_COOKIE
 from src.backend.domain.module import ExpiredTokenError, InvalidTokenError
 from src.backend.infra.manage import database
 from src.backend.service.manage import control_db, jwt
