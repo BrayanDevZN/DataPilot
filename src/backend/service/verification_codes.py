@@ -8,6 +8,7 @@ from src.backend.repository.cache import Cache
 
 class VerificationCodes:
     VALID_TYPES = {"create_account", "change_password", "auth2"}
+    DEFAULT_EXPIRE_SECONDS = 60
 
     @log_operation
     def __init__(self, cache: Cache) -> None:
@@ -36,10 +37,11 @@ class VerificationCodes:
         expire: int | None = None,
     ) -> str:
         code = self._code()
+        ttl = self.DEFAULT_EXPIRE_SECONDS if expire is None else expire
         await self.cache.set(
             self._key(email_type, email),
             code,
-            expire=expire,
+            expire=ttl,
         )
         return code
 
