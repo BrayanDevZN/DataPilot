@@ -15,16 +15,14 @@ class DataToolsManager:
         spark_threshold: int = 100_000,
         spark: SparkSession | None = None,
     ) -> None:
-        self.spark = spark or (
-            SparkSession.builder
-            .appName("DataPilot")
-            .getOrCreate()
-        )
+        self.spark = spark
         self.spark_threshold = spark_threshold
-        self.spark_tools = SparkTools(self.spark)
         self.polars_tools = PolarsTools()
+        self.spark_tools: SparkTools | None = None
 
         if isinstance(data, DataFrame):
+            self.spark = data.sparkSession
+            self.spark_tools = SparkTools(self.spark)
             self.engine = "spark"
             self.data = data
             self.row_count = data.count()
@@ -55,7 +53,7 @@ class DataToolsManager:
             if self.row_count >= self.spark_threshold:
                 self.engine = "spark"
                 self.data = self._records_to_spark(data)
-                self._tool = self.spark_tools
+                self._tool = self._spark_tools()
             else:
                 self.engine = "polars"
                 self.data = pl.from_dicts(
@@ -73,10 +71,11 @@ class DataToolsManager:
 
             if records is not None:
                 self.row_count = len(records)
+
                 if self.row_count >= self.spark_threshold:
                     self.engine = "spark"
                     self.data = self._records_to_spark(records)
-                    self._tool = self.spark_tools
+                    self._tool = self._spark_tools()
                 else:
                     self.engine = "polars"
                     self.data = pl.from_dicts(
@@ -88,6 +87,22 @@ class DataToolsManager:
 
         raise TypeError("Unsupported data type for DataToolsManager")
 
+    def _spark_session(self) -> SparkSession:
+        if self.spark is None:
+            self.spark = (
+                SparkSession.builder
+                .appName("DataPilot")
+                .getOrCreate()
+            )
+        return self.spark
+
+    def _spark_tools(self) -> SparkTools:
+        if self.spark_tools is None:
+            self.spark_tools = SparkTools(
+                self._spark_session()
+            )
+        return self.spark_tools
+
     def get_tool(self) -> SparkTools | PolarsTools:
         return self._tool
 
@@ -95,9 +110,12 @@ class DataToolsManager:
         return self.data
 
     def _records_to_spark(self, records: list[dict]) -> DataFrame:
+        spark = self._spark_session()
+
         if not records:
-            return self.spark.createDataFrame(
+            return spark.createDataFrame(
                 [],
                 schema="value string",
             )
-        return self.spark.createDataFrame(records)
+
+        return spark.createDataFrame(records)
