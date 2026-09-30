@@ -35,8 +35,8 @@ class Middleware(BaseHTTPMiddleware):
         if window_seconds <= 0:
             raise ValueError("window_seconds must be positive")
 
-        self.global_limit = global_limit
-        self.rate_limit = rate_limit
+        self.default_global_limit = global_limit
+        self.default_rate_limit = rate_limit
         self.window_seconds = window_seconds
         self.public_routes = {
             self._normalize_path(path)
@@ -49,14 +49,16 @@ class Middleware(BaseHTTPMiddleware):
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
+        global_limit, rate_limit = await self._load_limits()
+
         global_count = await self._increment(
             self._global_key(),
         )
 
-        if global_count > self.global_limit:
+        if global_count > global_limit:
             logger.warning("Rate limit global excedido")
             return self._too_many_requests(
-                limit=self.global_limit,
+                limit=global_limit,
                 scope="global",
             )
 
@@ -71,21 +73,21 @@ class Middleware(BaseHTTPMiddleware):
             self._client_key(identity),
         )
 
-        if client_count > self.rate_limit:
+        if client_count > rate_limit:
             logger.warning(
                 "Rate limit excedido para escopo %s",
                 "public" if is_public else "private",
             )
             return self._too_many_requests(
-                limit=self.rate_limit,
+                limit=rate_limit,
                 scope="public" if is_public else "private",
             )
 
         response = await call_next(request)
 
-        response.headers["X-RateLimit-Limit"] = str(self.rate_limit)
+        response.headers["X-RateLimit-Limit"] = str(rate_limit)
         response.headers["X-RateLimit-Remaining"] = str(
-            max(0, self.rate_limit - client_count)
+            max(0, rate_limit - client_count)
         )
         response.headers["X-RateLimit-Reset"] = str(
             self._seconds_until_reset()
@@ -133,6 +135,68 @@ class Middleware(BaseHTTPMiddleware):
             return request.client.host
 
         return "unknown"
+
+    async def _load_limits(self) -> tuple[int, int]:
+        """Initialize rate-limit configuration in Redis and read it back."""
+        global_key = "rate_limit:config:global_limit"
+        client_key = "rate_limit:config:client_limit"
+
+        async with redis.pipeline(transaction=True) as pipeline:
+            pipeline.setnx(global_key, self.default_global_limit)
+            pipeline.setnx(client_key, self.default_rate_limit)
+            pipeline.mget(global_key, client_key)
+            result = await pipeline.execute()
+
+        raw_global, raw_client = result[2]
+
+        try:
+            global_limit = int(raw_global)
+            rate_limit = int(raw_client)
+        except (TypeError, ValueError):
+            logger.error("Configuração de rate limit inválida no Redis")
+            await self.set_limits(
+                global_limit=self.default_global_limit,
+                rate_limit=self.default_rate_limit,
+            )
+            return self.default_global_limit, self.default_rate_limit
+
+        if global_limit <= 0 or rate_limit <= 0:
+            logger.error("Rate limit não positivo encontrado no Redis")
+            await self.set_limits(
+                global_limit=self.default_global_limit,
+                rate_limit=self.default_rate_limit,
+            )
+            return self.default_global_limit, self.default_rate_limit
+
+        return global_limit, rate_limit
+
+    async def set_limits(
+        self,
+        *,
+        global_limit: int | None = None,
+        rate_limit: int | None = None,
+    ) -> None:
+        """Persist rate-limit configuration in Redis."""
+        if global_limit is not None and global_limit <= 0:
+            raise ValueError("global_limit must be positive")
+        if rate_limit is not None and rate_limit <= 0:
+            raise ValueError("rate_limit must be positive")
+
+        mapping: dict[str, int] = {}
+
+        if global_limit is not None:
+            mapping["rate_limit:config:global_limit"] = global_limit
+
+        if rate_limit is not None:
+            mapping["rate_limit:config:client_limit"] = rate_limit
+
+        if not mapping:
+            return
+
+        async with redis.pipeline(transaction=True) as pipeline:
+            for key, value in mapping.items():
+                pipeline.set(key, value)
+            await pipeline.execute()
 
     def _global_key(self) -> str:
         return f"rate_limit:global:{self._window_id()}"
