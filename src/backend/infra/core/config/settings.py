@@ -65,7 +65,11 @@ def positive_int(name: str, default: int) -> int:
 
 @log_operation
 def runtime_environment() -> str:
-    value = (os.getenv("ENVIROIMENT") or "test").strip().lower()
+    value = (
+        os.getenv("ENVIROIMENT")
+        or os.getenv("enviroiment")
+        or "test"
+    ).strip().lower()
     if value not in {"test", "prod"}:
         raise ValueError("ENVIROIMENT must be test or prod")
     return value
