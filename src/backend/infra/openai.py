@@ -21,11 +21,13 @@ class OpenAIClient:
         *,
         model: str = "gpt-4.1-mini",
         temperature: float = 1.0,
+        previous_response_id: str | None = None,
     ):
         return await self.client.responses.create(
             model=model,
             input=prompt,
             temperature=temperature,
+            previous_response_id=previous_response_id,
         )
 
     @log_operation
@@ -37,6 +39,7 @@ class OpenAIClient:
         model: str = "gpt-4.1-mini",
         temperature: float = 1.0,
         tool_choice: str | dict[str, Any] = "auto",
+        previous_response_id: str | None = None,
     ):
         return await self.client.responses.create(
             model=model,
@@ -44,4 +47,5 @@ class OpenAIClient:
             tools=tools,
             tool_choice=tool_choice,
             temperature=temperature,
+            previous_response_id=previous_response_id,
         )
