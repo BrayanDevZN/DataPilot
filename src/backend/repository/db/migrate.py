@@ -1,4 +1,4 @@
-"""Create mapped tables and ensure public UUID columns; not a versioned migration system."""
+"""Create mapped tables and apply idempotent compatibility upgrades."""
 
 from importlib import import_module
 from pathlib import Path
