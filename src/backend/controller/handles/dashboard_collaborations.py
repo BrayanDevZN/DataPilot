@@ -2,10 +2,15 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
+from src.backend.controller.schema.dashboard_collaborations import (
+    DashboardCollaborationCreate,
+    DashboardCollaborationRespond,
+    DashboardCollaborationUpdate,
+)
 from src.backend.service.db.repository import control_repository
 
 
@@ -89,20 +94,13 @@ async def list_collaborations(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_collaboration(
-    data: dict[str, Any] = Body(...),
+    data: DashboardCollaborationCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    try:
-        dashboard_id = int(data.get("dashboard_id"))
-        collaborator_user_id = int(data.get("collaborator_user_id"))
-    except (TypeError, ValueError) as error:
-        raise HTTPException(
-            status_code=400,
-            detail="dashboard_id and collaborator_user_id are required",
-        ) from error
-
-    permission = str(data.get("permission") or "").strip().lower()
+    dashboard_id = data.dashboard_id
+    collaborator_user_id = data.collaborator_user_id
+    permission = data.permission
 
     await _owned_dashboard(
         session,
@@ -155,13 +153,11 @@ async def get_collaboration(
 @router.patch("/{collaboration_id}")
 async def update_collaboration(
     collaboration_id: int,
-    data: dict[str, Any] = Body(...),
+    data: DashboardCollaborationUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    permission = str(data.get("permission") or "").strip().lower()
-    if permission not in ("read", "edit", "full"):
-        raise HTTPException(status_code=400, detail="Invalid permission")
+    permission = data.permission
 
     result = await control_repository(
         session,
@@ -180,11 +176,11 @@ async def update_collaboration(
 @router.post("/{collaboration_id}/respond")
 async def respond_collaboration(
     collaboration_id: int,
-    data: dict[str, Any] = Body(...),
+    data: DashboardCollaborationRespond,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    response = str(data.get("response") or "").strip().lower()
+    response = data.response
 
     try:
         result = await control_repository(
