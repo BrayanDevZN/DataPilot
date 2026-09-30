@@ -194,8 +194,10 @@ class SQLQueryTool:
         except Exception as error:
             raise ValueError("Invalid database URL") from error
 
-        if url.get_backend_name() not in {"postgres", "postgresql"}:
-            raise ValueError("Only PostgreSQL data sources are supported")
+        if url.drivername != "postgresql+asyncpg":
+            raise ValueError(
+                "Database URL must explicitly use postgresql+asyncpg://"
+            )
 
         if not url.host or not url.database or not url.username:
             raise ValueError(
@@ -214,7 +216,7 @@ class SQLQueryTool:
 
         connection = infra.external_database(
             database_url,
-            connect_args={"connect_timeout": 10},
+            connect_args={"timeout": 10},
         )
 
         try:
