@@ -5,7 +5,7 @@ camadas. Instale na raiz: `pip install -r src/backend/requirements.txt`.
 
 ## Configuração
 
-Copie `core/.env.example` para `src/backend/infra/core/.env` ou para `.env` na raiz.
+Copie `core/config/.env.example` para `src/backend/infra/core/config/.env` ou para `.env` na raiz.
 O arquivo local é selecionado quando existe; na ausência dele, usa-se o da raiz.
 Variáveis já definidas no processo têm prioridade. A seleção independe do diretório
 de execução. Sem arquivos, são usadas as variáveis do processo.
@@ -106,7 +106,7 @@ registrados automaticamente, para evitar expor credenciais.
 
 ## Templates de e-mail
 
-`core/create_account.html` e `core/change_password.html` contêm os modelos com
+`core/sender/create_account.html` e `core/sender/change_password.html` contêm os modelos com
 o marcador `{{code}}`. O objeto `email_files` lê os arquivos em UTF-8 e retorna
 um dicionário com as chaves `create_account` e `change_password`. Os caminhos
 são relativos ao módulo, independentemente do diretório de execução.
@@ -142,3 +142,8 @@ async def shutdown():
 
 `create_client()` reutiliza o cliente; `test()` e `test_connection()` executam
 PING. `infra.close()` encerra PostgreSQL e Redis. Importar não acessa o servidor.
+
+
+## Prompts de IA
+
+Os prompts versionados ficam em `core/prompts/`. O objeto `prompts`, exportado por `infra/manage.py`, usa `PromptFiles` para carregar os arquivos Markdown por nome sem depender do diretório de execução.
