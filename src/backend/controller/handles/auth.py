@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_session
-from src.backend.controller.schemas.auth import (
+from src.backend.controller.schema.auth import (
     LoginRequest,
     LoginResponse,
     LogoutResponse,
