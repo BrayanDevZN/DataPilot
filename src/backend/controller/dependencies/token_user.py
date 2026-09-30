@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import HTTPException, Request, status
 
+from src.backend.controller.session import ACCESS_COOKIE
 from src.backend.domain.module import ExpiredTokenError, InvalidTokenError
 from src.backend.infra.manage import database
 from src.backend.service.manage import control_db, jwt
@@ -13,10 +14,7 @@ class TokenUser:
     """Read a JWT from the request and return the corresponding database user."""
 
     def _token(self, request: Request) -> str:
-        cookie_token = (
-            request.cookies.get("access_token")
-            or request.cookies.get("token")
-        )
+        cookie_token = request.cookies.get(ACCESS_COOKIE)
         if cookie_token:
             return cookie_token.strip()
 
