@@ -30,6 +30,7 @@ class UserCreate(StrictSchema):
     age: int = Field(gt=0, le=130)
     gender: Gender
     profile_image: str | None = Field(default=None, max_length=2_000)
+    auth2: bool = False
     code: str = Field(min_length=6, max_length=6)
 
     @field_validator("email")
@@ -58,6 +59,7 @@ class UserUpdate(StrictSchema):
     age: int | None = Field(default=None, gt=0, le=130)
     gender: Gender | None = None
     profile_image: str | None = Field(default=None, max_length=2_000)
+    auth2: bool | None = None
 
     @field_validator("email")
     @classmethod
