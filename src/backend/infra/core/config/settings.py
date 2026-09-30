@@ -137,11 +137,25 @@ class Settings:
 
         environment = runtime_environment()
         openai_api_key = (os.getenv("OPENAI_API_KEY") or "").strip() or None
+        signing_key = (os.getenv("SING") or "").strip() or None
 
-        if environment == "prod" and openai_api_key is None:
-            raise ValueError(
-                "OPENAI_API_KEY is required when ENVIROIMENT=prod"
-            )
+        if environment == "prod":
+            missing = [
+                name
+                for name, value in {
+                    "DATABASE_URL": os.getenv("DATABASE_URL"),
+                    "OPENAI_API_KEY": openai_api_key,
+                    "SING": signing_key,
+                }.items()
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    "Missing required production settings: "
+                    + ", ".join(missing)
+                )
+        elif signing_key is None:
+            signing_key = "datapilot-local-test-signing-key-32-bytes"
 
         return cls(
             enviroiment=environment,
@@ -162,7 +176,7 @@ class Settings:
             ),
             url_email=os.getenv("URL_EMAIL"),
             secret=os.getenv("SECRET"),
-            sing=os.getenv("SING"),
+            sing=signing_key,
             openai_api_key=openai_api_key,
             cors_allowed_origins=tuple(
                 origin.strip()
