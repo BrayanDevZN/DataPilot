@@ -1,17 +1,25 @@
 """Async SQLAlchemy connections; persistence belongs in repositories."""
 
-from src.backend.logs.log import logger, log_operation
-
 from sqlalchemy import URL, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
-    AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine,
+    AsyncConnection,
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
 )
+
+from src.backend.logs.log import logger, log_operation
 
 
 class SQLConnection:
     @log_operation
-    def __init__(self, url: str | URL, connect_args: dict | None = None) -> None:
+    def __init__(
+        self,
+        url: str | URL,
+        connect_args: dict | None = None,
+    ) -> None:
         self._url = url
         self._connect_args = dict(connect_args or {})
         self._engine: AsyncEngine | None = None
@@ -20,15 +28,29 @@ class SQLConnection:
     @log_operation
     def base_url(self) -> URL:
         url = make_url(self._url) if isinstance(self._url, str) else self._url
-        if url.get_backend_name() in ("postgres", "postgresql"):
-            url = url.set(drivername="postgresql+psycopg")
+
+        if url.get_backend_name() in {"postgres", "postgresql"}:
+            if url.drivername != "postgresql+asyncpg":
+                raise ValueError(
+                    "PostgreSQL URL must explicitly use postgresql+asyncpg://"
+                )
+        elif url.get_backend_name() == "sqlite":
+            if url.drivername != "sqlite+aiosqlite":
+                raise ValueError(
+                    "SQLite URL must explicitly use sqlite+aiosqlite://"
+                )
+        else:
+            raise ValueError("Unsupported database backend")
+
         return url
 
     @log_operation
     def create_engine(self) -> AsyncEngine:
         if self._engine is None:
             self._engine = create_async_engine(
-                self.base_url(), pool_pre_ping=True, hide_parameters=True,
+                self.base_url(),
+                pool_pre_ping=True,
+                hide_parameters=True,
                 connect_args=self._connect_args,
             )
         logger.info("AsyncEngine disponível")
@@ -36,10 +58,11 @@ class SQLConnection:
 
     @log_operation
     def create_session(self) -> async_sessionmaker[AsyncSession]:
-        """Return a factory, so each operation gets its own AsyncSession."""
         if self._session_factory is None:
             self._session_factory = async_sessionmaker(
-                self.create_engine(), class_=AsyncSession, expire_on_commit=False,
+                self.create_engine(),
+                class_=AsyncSession,
+                expire_on_commit=False,
             )
         logger.info("Fábrica de AsyncSession disponível")
         return self._session_factory
@@ -60,7 +83,6 @@ class SQLConnection:
 
     @log_operation
     async def test(self) -> bool:
-        """Test this connection with SELECT 1; failures propagate."""
         async with self.connect() as connection:
             result = await connection.execute(text("SELECT 1"))
             return result.scalar_one() == 1
@@ -70,45 +92,22 @@ class SQLConnection:
         return await self.test()
 
     @log_operation
-    async def __call__(self) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
-        """Build the URL, engine and session factory, test, then return both."""
+    async def __call__(
+        self,
+    ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
         engine = self.create_engine()
         sessions = self.create_session()
+
         try:
             if not await self.test():
                 raise ConnectionError("Database connection test failed")
         except Exception:
             await self.close()
             raise
+
         return engine, sessions
 
     @log_operation
     async def close(self) -> None:
         if self._engine is not None:
             await self._engine.dispose()
-
-
-class PostgreSQLConnection(SQLConnection):
-    @log_operation
-    def __init__(
-        self, *, database: str | None = None, host: str | None = None,
-        port: int = 5432, username: str | None = None, password: str | None = None,
-        database_url: str | None = None, connect_timeout: int = 10,
-    ) -> None:
-        super().__init__(database_url or "", {"connect_timeout": connect_timeout})
-        self._parameters = dict(database=database, host=host, port=port,
-                                username=username, password=password)
-        self._database_url = database_url
-
-    @log_operation
-    def base_url(self) -> URL:
-        if self._database_url:
-            url = make_url(self._database_url)
-            if url.get_backend_name() not in ("postgres", "postgresql"):
-                raise ValueError("DATABASE_URL must use PostgreSQL")
-            return url.set(drivername="postgresql+psycopg")
-        missing = [name for name in ("database", "host", "username", "password")
-                   if not self._parameters[name]]
-        if missing:
-            raise ValueError("Missing PostgreSQL settings: " + ", ".join(missing))
-        return URL.create("postgresql+psycopg", **self._parameters)
