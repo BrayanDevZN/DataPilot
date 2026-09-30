@@ -1,3 +1,4 @@
+from .agents import router as agents_router
 from .auth import router as auth_router
 from .collaboration_notifications import router as collaboration_notifications_router
 from .conversations import router as conversations_router
@@ -12,6 +13,7 @@ from .users import router as users_router
 
 
 routers = (
+    agents_router,
     auth_router,
     users_router,
     conversations_router,
@@ -37,6 +39,7 @@ PUBLIC_ROUTES = {
 
 __all__ = [
     "routers",
+    "agents_router",
     "auth_router",
     "PUBLIC_ROUTES",
     "users_router",
