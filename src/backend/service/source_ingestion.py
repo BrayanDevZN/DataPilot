@@ -94,12 +94,21 @@ class DataFileReader:
 
         raise ValueError("JSON dataset must contain objects")
 
-    def read(self, filename: str, content: bytes) -> DataSnapshot:
+    def read_frame(
+        self,
+        filename: str,
+        content: bytes,
+        *,
+        max_file_bytes: int | None = None,
+    ) -> pl.DataFrame:
         if not content:
             raise ValueError("Uploaded file is empty")
 
-        if len(content) > self.MAX_FILE_BYTES:
-            raise ValueError("Uploaded file exceeds the 25 MiB limit")
+        limit = self.MAX_FILE_BYTES if max_file_bytes is None else max_file_bytes
+        if len(content) > limit:
+            raise ValueError(
+                f"Uploaded file exceeds the {limit // (1024 * 1024)} MiB limit"
+            )
 
         extension = self._extension(filename)
 
@@ -120,7 +129,12 @@ class DataFileReader:
         if frame.width == 0:
             raise ValueError("Dataset does not contain columns")
 
-        return self._records(frame)
+        return frame
+
+    def read(self, filename: str, content: bytes) -> DataSnapshot:
+        return self._records(
+            self.read_frame(filename, content)
+        )
 
 
 class SQLQueryTool:
@@ -243,3 +257,132 @@ class SQLQueryTool:
 
 file_reader = DataFileReader()
 sql_query_tool = SQLQueryTool()
+
+
+class AgentDatasetLoader:
+    """Choose Polars or Spark without persisting the uploaded file."""
+
+    MAX_FILE_BYTES = 100 * 1024 * 1024
+    SPARK_FILE_THRESHOLD = 8 * 1024 * 1024
+
+    def __init__(self, reader: DataFileReader) -> None:
+        self.reader = reader
+
+    def _decode_text(self, content: bytes) -> str:
+        try:
+            return content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return content.decode("latin-1")
+
+    def _spark_csv(self, filename: str, content: bytes):
+        from pyspark.sql import SparkSession
+
+        text_content = self._decode_text(content)
+        sample = text_content[:8192]
+
+        try:
+            separator = csv.Sniffer().sniff(
+                sample,
+                delimiters=",;\t|",
+            ).delimiter
+        except csv.Error:
+            separator = ","
+
+        lines = text_content.splitlines()
+        if not lines:
+            raise ValueError("Uploaded CSV file is empty")
+
+        spark = (
+            SparkSession.builder
+            .appName("DataPilot")
+            .getOrCreate()
+        )
+        rdd = spark.sparkContext.parallelize(lines)
+
+        return (
+            spark.read
+            .option("header", True)
+            .option("inferSchema", True)
+            .option("sep", separator)
+            .csv(rdd)
+        )
+
+    def _spark_json(self, content: bytes):
+        from pyspark.sql import SparkSession
+
+        text_content = self._decode_text(content)
+
+        try:
+            payload = json.loads(text_content)
+        except json.JSONDecodeError:
+            lines = [
+                line
+                for line in text_content.splitlines()
+                if line.strip()
+            ]
+        else:
+            if isinstance(payload, list):
+                lines = [
+                    json.dumps(item, ensure_ascii=False, default=str)
+                    for item in payload
+                ]
+            elif isinstance(payload, dict):
+                for key in ("data", "items", "rows", "results"):
+                    value = payload.get(key)
+                    if isinstance(value, list):
+                        payload = value
+                        break
+
+                if isinstance(payload, list):
+                    lines = [
+                        json.dumps(item, ensure_ascii=False, default=str)
+                        for item in payload
+                    ]
+                else:
+                    lines = [
+                        json.dumps(payload, ensure_ascii=False, default=str)
+                    ]
+            else:
+                raise ValueError("JSON dataset must contain objects")
+
+        if not lines:
+            raise ValueError("Uploaded JSON file is empty")
+
+        spark = (
+            SparkSession.builder
+            .appName("DataPilot")
+            .getOrCreate()
+        )
+        rdd = spark.sparkContext.parallelize(lines)
+        return spark.read.json(rdd)
+
+    def load(
+        self,
+        filename: str,
+        content: bytes,
+    ) -> tuple[Any, str]:
+        if not content:
+            raise ValueError("Uploaded file is empty")
+
+        if len(content) > self.MAX_FILE_BYTES:
+            raise ValueError("Uploaded file exceeds the 100 MiB limit")
+
+        extension = self.reader._extension(filename)
+
+        if (
+            len(content) >= self.SPARK_FILE_THRESHOLD
+            and extension in {".csv", ".json"}
+        ):
+            if extension == ".csv":
+                return self._spark_csv(filename, content), "spark"
+            return self._spark_json(content), "spark"
+
+        frame = self.reader.read_frame(
+            filename,
+            content,
+            max_file_bytes=self.MAX_FILE_BYTES,
+        )
+        return frame.lazy(), "polars"
+
+
+agent_dataset_loader = AgentDatasetLoader(file_reader)
