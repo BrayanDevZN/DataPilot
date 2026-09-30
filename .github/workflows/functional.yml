@@ -53,29 +53,6 @@ jobs:
         run: |
           docker compose up -d redis redis-celery api worker
 
-      - name: Wait for DataPilot API
-        run: |
-          for i in $(seq 1 60); do
-            if curl -fsS http://localhost:8001/users/ >/dev/null 2>&1; then
-              echo "DataPilot API is reachable"
-              exit 0
-            fi
-
-            if ! docker compose ps api --status running | grep -q api; then
-              echo "DataPilot API container is not running"
-              docker compose ps
-              docker compose logs --no-color api
-              exit 1
-            fi
-
-            sleep 2
-          done
-
-          echo "DataPilot API did not become ready"
-          docker compose ps
-          docker compose logs --no-color api
-          exit 1
-
       - name: Set up Python for functional tests
         uses: actions/setup-python@v5
         with:
@@ -91,8 +68,6 @@ jobs:
       - name: Run functional route tests
         env:
           FUNCTIONAL_BASE_URL: http://localhost:8001
-          FUNCTIONAL_REDIS_HOST: localhost
-          FUNCTIONAL_REDIS_PORT: "6379"
         run: |
           python tests/functional/routes.py
 
