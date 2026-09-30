@@ -22,20 +22,28 @@ class PromptFiles:
     @log_operation
     def __init__(self) -> None:
         self._directory = Path(__file__).resolve().parent
+        self.prompts = self.read_all()
 
     @log_operation
     def read(self, name: str) -> str:
         if name not in self.NAMES:
             raise ValueError(f"Prompt desconhecido: {name}")
-        content = (self._directory / f"{name}.md").read_text(encoding="utf-8")
-        logger.info("Prompt carregado: %s", name)
-        return content
+        return self.prompts[name]
 
     @log_operation
     def read_all(self) -> dict[str, str]:
-        return {name: self.read(name) for name in self.NAMES}
+        prompts: dict[str, str] = {}
+
+        for name in self.NAMES:
+            prompts[name] = (self._directory / f"{name}.md").read_text(encoding="utf-8")
+            logger.info("Prompt carregado: %s", name)
+
+        return prompts
+
+    def __getitem__(self, name: str) -> str:
+        return self.read(name)
 
     def __getattr__(self, name: str) -> str:
         if name in self.NAMES:
-            return self.read(name)
+            return self.prompts[name]
         raise AttributeError(name)
