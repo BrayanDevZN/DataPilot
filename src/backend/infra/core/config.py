@@ -44,8 +44,7 @@ class Settings:
     db_port: int = 5432
     db_connect_timeout: int = 10
     email_timeout: int = 30
-    email_user: str | None = field(default=None, repr=False)
-    email_password: str | None = field(default=None, repr=False)
+    url_sender: str = "http://api:8000"
     url_email: str | None = None
     secret: str | None = field(default=None, repr=False)
     sing: str | None = field(default=None, repr=False)
@@ -64,8 +63,7 @@ class Settings:
             db_port=positive_int("DB_PORT", 5432),
             db_connect_timeout=positive_int("DB_CONNECT_TIMEOUT", 10),
             email_timeout=positive_int("EMAIL_TIMEOUT", 30),
-            email_user=os.getenv("EMAIL_USER"),
-            email_password=os.getenv("EMAIL_PASSWORD"),
+            url_sender=os.getenv("URL_SENDER") or "http://api:8000",
             url_email=os.getenv("URL_EMAIL"),
             secret=os.getenv("SECRET"),
             sing=os.getenv("SING"),
