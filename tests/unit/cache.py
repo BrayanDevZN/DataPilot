@@ -35,6 +35,14 @@ class CacheTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.cache.delete("text"), {"deleted": 0})
         self.assertEqual(await self.cache.get("text"), {"value": None})
         self.assertEqual(await self.cache.get("absent", hash=True), {"value": {}})
+        for key in ('profile', 'counter'):
+            self.assertGreater(await self.redis.ttl(key), 0)
+            self.assertLessEqual(await self.redis.ttl(key), 60)
+        await self.cache.set('expiring', 'value')
+        self.assertEqual(await self.redis.ttl('expiring'), 60)
+        await self.redis.pexpire('expiring', 1)
+        await asyncio.sleep(0.01)
+        self.assertEqual(await self.cache.get('expiring'), {'value': None})
 
     async def test_watch_conflict_retries_every_operation(self):
         cases = [

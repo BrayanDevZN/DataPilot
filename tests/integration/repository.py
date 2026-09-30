@@ -16,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pgserver
 from sqlalchemy import func, text, update
+from fakeredis.aioredis import FakeRedis
+from unittest.mock import AsyncMock, patch
+from src.backend.repository import control as cached_controls
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -269,6 +272,31 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
                     self.assertFalse((await control.update(record_id, change))['updated'])
                     self.assertFalse((await control.delete(record_id))['deleted'])
                     self.assertFalse(session.in_transaction())
+                    redis = FakeRedis(decode_responses=True)
+                    try:
+                        class_name = 'Control' + type(control).__name__.removesuffix('Control')
+                        cached = getattr(cached_controls, class_name)(redis, session)
+                        inserted = await cached.insert(values)
+                        identity = inserted[control.primary_key.name]
+                        cache_key = f'{name}:{control.primary_key.name}:{identity}'
+                        self.assertGreater(await redis.ttl(cache_key), 0)
+                        self.assertLessEqual(await redis.ttl(cache_key), 60)
+                        with patch.object(cached.db, 'list', new_callable=AsyncMock) as query:
+                            self.assertEqual(await cached.select(control.primary_key.name, identity), inserted)
+                            query.assert_not_awaited()
+                        await redis.delete(cache_key)
+                        self.assertEqual(await cached.select(control.primary_key.name, identity), inserted)
+                        self.assertIsNotNone(await redis.get(cache_key))
+                        updated = await cached.update(control.primary_key.name, identity, change)
+                        for key, value in change.items():
+                            self.assertEqual(updated[key], value)
+                        self.assertIsNone(await redis.get(cache_key))
+                        self.assertEqual(await cached.select(control.primary_key.name, identity), updated)
+                        self.assertTrue((await cached.delete(control.primary_key.name, identity))['deleted'])
+                        self.assertIsNone(await redis.get(cache_key))
+                        self.assertIsNone(await cached.select(control.primary_key.name, identity))
+                    finally:
+                        await redis.aclose()
         with self.assertRaises(TypeError):
             ControlDb(None)
 
@@ -395,6 +423,37 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await db.dashboards.get(dashboard['id']))['item']['public_id'], dashboard_after['public_id'])
         new_user = await self.user('new')
         self.assertIsInstance(new_user['public_id'], UUID)
+
+    async def test_cached_public_id_aliases_rollback_and_cascades(self):
+        redis = FakeRedis(decode_responses=True)
+        try:
+            async with self.sessions() as session:
+                users = cached_controls.ControlUsers(redis, session)
+                dashboards = cached_controls.ControlDashboards(redis, session)
+                user = await users.insert({'name': 'Cache', 'username': 'cache', 'email': 'cache@example.com',
+                    'password': 'hash', 'age': 18, 'gender': 'other'})
+                public_key = f"users:public_id:{user['public_id']}"
+                self.assertIsNotNone(await redis.get(public_key))
+                self.assertEqual(await users.select('public_id', str(user['public_id'])), user)
+                self.assertEqual(await users.select('email', ' CACHE@EXAMPLE.COM '), user)
+                changed = await users.update('public_id', user['public_id'], {'username': 'changed'})
+                self.assertIsNone(await redis.get(public_key))
+                self.assertIsNone(await users.select('username', 'cache'))
+                self.assertEqual(await users.select('username', 'changed'), changed)
+                dashboard = await dashboards.insert({'user_id': user['user_id'], 'title': 'Cached'})
+                with self.assertRaises(ValueError):
+                    async with session.begin():
+                        await users.insert({'name': 'Forbidden'})
+                with self.assertRaises(IntegrityError):
+                    await users.insert({'name': 'Duplicate', 'username': 'different', 'email': user['email'],
+                        'password': 'hash', 'age': 18, 'gender': 'other'})
+                self.assertIsNone(await users.select('username', 'different'))
+                self.assertTrue((await users.delete('public_id', user['public_id']))['deleted'])
+                self.assertIsNone(await dashboards.select('public_id', dashboard['public_id']))
+                self.assertFalse((await users.delete('user_id', user['user_id']))['deleted'])
+                self.assertIsNone(await users.update('user_id', user['user_id'], {'name': 'Missing'}))
+        finally:
+            await redis.aclose()
 
 
 if __name__ == '__main__':

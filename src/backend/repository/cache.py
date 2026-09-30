@@ -13,10 +13,13 @@ from src.backend.logs.log import logger, log_operation
 
 class Cache:
     @log_operation
-    def __init__(self, redis: Redis) -> None:
+    def __init__(self, redis: Redis, ttl: int = 60) -> None:
         if not isinstance(redis, Redis):
             raise TypeError("Cache requires an async Redis client")
         self.redis = redis
+        if isinstance(ttl, bool) or not isinstance(ttl, int) or ttl <= 0:
+            raise ValueError("Cache TTL must be a positive integer")
+        self.ttl = ttl
 
     @log_operation
     async def _execute(self, key: str, command: Callable[[Pipeline], Any]) -> Any:
@@ -37,19 +40,19 @@ class Cache:
     async def hash(self, key: str, data: dict[str, str | int | float]) -> dict[str, int]:
         if not isinstance(data, dict) or not data:
             raise ValueError("Provide a non-empty hash mapping")
-        added = await self._execute(key, lambda pipeline: pipeline.hset(key, mapping=data))
+        added = await self._execute(key, lambda pipeline: pipeline.hset(key, mapping=data).expire(key, self.ttl))
         return {"added": added}
 
     @log_operation
     async def set(self, key: str, value: str | int | float) -> dict[str, bool]:
-        result = await self._execute(key, lambda pipeline: pipeline.set(key, value))
+        result = await self._execute(key, lambda pipeline: pipeline.set(key, value, ex=self.ttl))
         return {"set": bool(result)}
 
     @log_operation
     async def incr(self, key: str, amount: int = 1) -> dict[str, int]:
         if isinstance(amount, bool) or not isinstance(amount, int):
             raise TypeError("Increment amount must be an integer")
-        value = await self._execute(key, lambda pipeline: pipeline.incrby(key, amount))
+        value = await self._execute(key, lambda pipeline: pipeline.incrby(key, amount).expire(key, self.ttl))
         return {"value": value}
 
     @log_operation
