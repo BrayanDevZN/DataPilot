@@ -1,42 +1,42 @@
-"""Authenticated verification-code routes."""
+"""Authenticated password-verification routes backed by Redis."""
 
-from secrets import randbelow
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.backend.controller.dependencies import get_current_user, get_session
+from src.backend.controller.dependencies import get_current_user
 from src.backend.controller.schema.validation import ValidationConsume
-from src.backend.service.db.repository import control_repository
-from src.backend.service.manage import sender
+from src.backend.service.manage import sender, verification_codes
 
 
 router = APIRouter(prefix="/validation", tags=["validation"])
 
 
-def _code() -> str:
-    return f"{randbelow(1_000_000):06d}"
-
-
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def issue_validation(
     current_user: dict[str, Any] = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
-    code = _code()
+    email = str(current_user["email"]).strip().lower()
+
+    code = await verification_codes.issue(
+        "change_password",
+        email,
+        expire=None,
+    )
 
     try:
-        result = await control_repository(
-            session,
-        ).validation.db.issue(current_user["user_id"], code)
-        await sender.change_password(current_user["email"], code)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        await sender.change_password(email, code)
+    except Exception:
+        await verification_codes.delete(
+            "change_password",
+            email,
+        )
+        raise
 
     return {
         "issued": True,
-        "validation_id": result["item"]["validation_id"],
+        "email": email,
+        "expires_in": 60,
     }
 
 
@@ -44,23 +44,18 @@ async def issue_validation(
 async def consume_validation(
     data: ValidationConsume,
     current_user: dict[str, Any] = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
 ):
-    number = data.number
+    email = str(current_user["email"]).strip().lower()
 
-    try:
-        result = await control_repository(
-            session,
-        ).validation.db.consume(
-            current_user["user_id"],
-            number,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+    consumed = await verification_codes.consume(
+        "change_password",
+        email,
+        data.number,
+    )
 
-    if not result["consumed"]:
+    if not consumed:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired verification code",
         )
 
