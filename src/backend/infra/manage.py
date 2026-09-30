@@ -21,8 +21,7 @@ class Infrastructure:
             username=settings.db_user, password=settings.db_password,
             database_url=settings.database_url, connect_timeout=settings.db_connect_timeout,
         )
-        self.sender = Sender(settings.email_user, settings.email_password,
-                             timeout=settings.email_timeout)
+        self.sender = Sender(settings.url_sender, timeout=settings.email_timeout)
         logger.info("Infraestrutura pronta: PostgreSQL, Redis e Sender")
 
     @log_operation
