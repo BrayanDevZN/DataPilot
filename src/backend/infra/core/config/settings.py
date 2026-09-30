@@ -38,6 +38,14 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 @log_operation
+def cookie_samesite(name: str = "COOKIE_SAMESITE") -> str:
+    value = (os.getenv(name) or "lax").strip().lower()
+    if value not in {"lax", "strict", "none"}:
+        raise ValueError(f"{name} must be lax, strict or none")
+    return value
+
+
+@log_operation
 def positive_int(name: str, default: int) -> int:
     try:
         value = int(os.getenv(name, str(default)))
@@ -95,5 +103,5 @@ class Settings:
                 if origin.strip()
             ),
             cookie_secure=env_bool("COOKIE_SECURE", False),
-            cookie_samesite=(os.getenv("COOKIE_SAMESITE") or "lax").strip().lower(),
+            cookie_samesite=cookie_samesite(),
         )
