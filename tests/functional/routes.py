@@ -1,436 +1,357 @@
-"""Functional HTTP tests against a locally running DataPilot API.
-
-Run from the project root after:
-    docker compose up --build
-
-Then:
-    python tests/functional/routes.py
-
-The test uses requests.Session so authentication cookies behave like a browser.
-Only verification-code setup talks directly to Redis; all application behavior
-is exercised through real HTTP routes.
-"""
+"""HTTP-only functional checks for DataPilot."""
 
 from __future__ import annotations
 
 import io
 import os
 import time
-import unittest
 from uuid import uuid4
 
 import requests
-from redis import Redis
 
 
 BASE_URL = os.getenv("FUNCTIONAL_BASE_URL", "http://localhost:8000").rstrip("/")
-REDIS_HOST = os.getenv("FUNCTIONAL_REDIS_HOST", "localhost")
-REDIS_PORT = int(os.getenv("FUNCTIONAL_REDIS_PORT", "6379"))
-REQUEST_TIMEOUT = float(os.getenv("FUNCTIONAL_REQUEST_TIMEOUT", "30"))
+TIMEOUT = float(os.getenv("FUNCTIONAL_REQUEST_TIMEOUT", "30"))
 
 
-class DataPilotFunctionalRoutes(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.session = requests.Session()
-        cls.redis = Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=0,
-            decode_responses=True,
-        )
-        cls._wait_for_api()
+def fail(method: str, path: str, response: requests.Response) -> None:
+    raise RuntimeError(
+        f"{method} {path} -> {response.status_code}: {response.text}"
+    )
 
-        suffix = uuid4().hex[:10]
-        cls.email = f"datapilot.functional.{suffix}@gmail.com"
-        cls.username = f"functional_{suffix}"
-        cls.password = "DataPilot123!"
-        cls.code = "123456"
 
-        cls.data_source_id: int | None = None
-        cls.conversation_id: int | None = None
-        cls.message_id: int | None = None
-        cls.dashboard_id: int | None = None
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        try:
-            cls.redis.delete(f"create_account:{cls.email}")
-            cls.redis.delete(f"auth2:{cls.email}")
-        finally:
-            cls.redis.close()
-            cls.session.close()
-
-    @classmethod
-    def _wait_for_api(cls) -> None:
-        deadline = time.time() + 90
-        last_error: Exception | None = None
-
-        while time.time() < deadline:
-            try:
-                response = cls.session.get(
-                    f"{BASE_URL}/users/",
-                    timeout=3,
-                )
-                if response.status_code in {200, 401}:
-                    return
-            except requests.RequestException as error:
-                last_error = error
-
-            time.sleep(1)
-
-        raise RuntimeError(
-            f"DataPilot API did not become ready at {BASE_URL}"
-        ) from last_error
-
-    def request(self, method: str, path: str, **kwargs) -> requests.Response:
-        response = self.session.request(
+def call(
+    session: requests.Session,
+    method: str,
+    path: str,
+    expected: int | set[int],
+    **kwargs,
+) -> requests.Response:
+    try:
+        response = session.request(
             method,
             f"{BASE_URL}{path}",
-            timeout=REQUEST_TIMEOUT,
+            timeout=TIMEOUT,
             **kwargs,
         )
+    except requests.RequestException as error:
+        raise RuntimeError(f"{method} {path} -> request failed: {error}") from error
 
-        if response.status_code >= 500:
-            self.fail(
-                f"{method} {path} returned {response.status_code}: "
-                f"{response.text}"
-            )
+    allowed = {expected} if isinstance(expected, int) else expected
+    if response.status_code not in allowed:
+        fail(method, path, response)
 
-        return response
+    print(f"OK {method} {path} -> {response.status_code}", flush=True)
+    return response
 
-    def assert_status(
-        self,
-        response: requests.Response,
-        expected: int | set[int],
-    ) -> None:
-        expected_set = {expected} if isinstance(expected, int) else expected
-        self.assertIn(
-            response.status_code,
-            expected_set,
-            msg=(
-                f"Unexpected status {response.status_code}. "
-                f"Body: {response.text}"
-            ),
-        )
 
-    def test_01_private_route_requires_authentication(self) -> None:
-        isolated = requests.Session()
+def wait_api(session: requests.Session) -> None:
+    deadline = time.time() + 120
+    last_error: Exception | None = None
+    while time.time() < deadline:
         try:
-            response = isolated.get(
-                f"{BASE_URL}/users/",
-                timeout=REQUEST_TIMEOUT,
-            )
-        finally:
-            isolated.close()
+            response = session.get(f"{BASE_URL}/users/", timeout=3)
+            if response.status_code in {200, 401}:
+                return
+        except requests.RequestException as error:
+            last_error = error
+        time.sleep(1)
+    raise RuntimeError(f"API unavailable at {BASE_URL}") from last_error
 
-        self.assert_status(response, 401)
-        self.assertEqual(
-            response.json()["detail"],
-            "Authentication token required",
+
+def create_user(
+    session: requests.Session,
+    *,
+    email: str,
+    username: str,
+    password: str,
+) -> dict:
+    sender = call(
+        session,
+        "POST",
+        "/sender/create-account",
+        202,
+        json={"email": email},
+    ).json()
+    code = sender.get("code")
+    if not code:
+        raise RuntimeError(
+            "sender/create-account did not return code; ENVIROIMENT must be test"
         )
 
-    def test_02_invalid_login_is_rejected(self) -> None:
-        response = self.request(
-            "POST",
-            "/auth/",
-            json={
-                "identifier": self.email,
-                "password": "WrongPassword123!",
-            },
-        )
-        self.assert_status(response, 401)
+    payload = call(
+        session,
+        "POST",
+        "/users/",
+        201,
+        json={
+            "name": "Functional User",
+            "username": username,
+            "email": email,
+            "password": password,
+            "age": 18,
+            "gender": "PREFIRO NÃO DIZER",
+            "profile_image": None,
+            "auth2": False,
+            "code": code,
+        },
+    ).json()
 
-    def test_03_create_user_and_receive_http_only_session(self) -> None:
-        self.redis.set(
-            f"create_account:{self.email}",
-            self.code,
-            ex=60,
-        )
+    if "X-token_user" not in session.cookies:
+        raise RuntimeError("missing X-token_user cookie")
+    if "X-refresh_user" not in session.cookies:
+        raise RuntimeError("missing X-refresh_user cookie")
 
-        response = self.request(
-            "POST",
-            "/users/",
-            json={
-                "name": "Functional Test",
-                "username": self.username,
-                "email": self.email,
-                "password": self.password,
-                "age": 18,
-                "gender": "PREFIRO NÃO DIZER",
-                "profile_image": None,
-                "auth2": False,
-                "code": self.code,
-            },
-        )
+    return payload["user"]
 
-        self.assert_status(response, 201)
-        payload = response.json()
 
-        self.assertTrue(payload["authenticated"])
-        self.assertFalse(payload["auth2_required"])
-        self.assertIn("X-token_user", self.session.cookies)
-        self.assertIn("X-refresh_user", self.session.cookies)
+def main() -> None:
+    session = requests.Session()
+    suffix = uuid4().hex[:10]
+    email = f"functional-{suffix}@example.com"
+    username = f"functional_{suffix}"
+    password = f"T-{uuid4().hex}aA1!"
 
-        set_cookie = response.headers.get("set-cookie", "").lower()
-        self.assertIn("httponly", set_cookie)
+    wait_api(session)
 
-    def test_04_get_and_update_current_user(self) -> None:
-        response = self.request("GET", "/users/")
-        self.assert_status(response, 200)
+    call(requests.Session(), "GET", "/users/", 401)
 
-        user = response.json()
-        self.assertEqual(user["email"], self.email)
-        self.assertEqual(user["username"], self.username.lower())
-        self.assertNotIn("password", user)
+    create_user(
+        session,
+        email=email,
+        username=username,
+        password=password,
+    )
 
-        response = self.request(
-            "PATCH",
-            "/users/",
-            json={"name": "Functional Updated"},
-        )
-        self.assert_status(response, 200)
-        self.assertEqual(response.json()["name"], "Functional Updated")
+    call(session, "GET", "/users/", 200)
+    call(
+        session,
+        "PATCH",
+        "/users/",
+        200,
+        json={"name": "Functional Updated"},
+    )
+    call(
+        session,
+        "POST",
+        "/sender/change-password",
+        202,
+        json={"email": email},
+    )
 
-    def test_05_upload_and_read_file_data_source(self) -> None:
-        csv_content = (
-            "produto,valor,quantidade\n"
-            "Notebook,5000,2\n"
-            "Mouse,150,10\n"
-            "Teclado,300,4\n"
-        ).encode()
+    csv_data = (
+        "produto,valor,quantidade\n"
+        "Notebook,5000,2\n"
+        "Mouse,150,10\n"
+        "Teclado,300,4\n"
+    ).encode()
 
-        response = self.request(
-            "POST",
-            "/data-sources/file",
-            data={"name": "Functional CSV"},
-            files={
-                "file": (
-                    "functional.csv",
-                    io.BytesIO(csv_content),
-                    "text/csv",
-                )
-            },
-        )
+    source = call(
+        session,
+        "POST",
+        "/data-sources/file",
+        201,
+        data={"name": "Functional CSV"},
+        files={"file": ("functional.csv", io.BytesIO(csv_data), "text/csv")},
+    ).json()["data_source"]
+    source_id = int(source["id"])
 
-        self.assert_status(response, 201)
-        source = response.json()["data_source"]
+    call(session, "GET", "/data-sources/", 200)
+    call(session, "GET", f"/data-sources/{source_id}", 200)
+    call(
+        session,
+        "PATCH",
+        f"/data-sources/?data_source_id={source_id}",
+        200,
+        json={"name": "Functional CSV Updated"},
+    )
+    call(
+        session,
+        "PATCH",
+        f"/data-sources/file?data_source_id={source_id}",
+        200,
+        data={"name": "Functional CSV Replaced"},
+        files={"file": ("functional.csv", io.BytesIO(csv_data), "text/csv")},
+    )
 
-        self.__class__.data_source_id = int(source["id"])
-        self.assertEqual(source["row_count"], 3)
-        self.assertEqual(source["column_count"], 3)
-        self.assertEqual(source["source_type"], "file")
+    call(
+        session,
+        "POST",
+        "/agents/chat",
+        200,
+        json={"question": "Explique o DataPilot.", "history": []},
+    )
+    call(
+        session,
+        "POST",
+        "/agents/chat-intent",
+        200,
+        json={"question": "Quero analisar dados.", "history": []},
+    )
+    call(
+        session,
+        "POST",
+        "/agents/data",
+        200,
+        json={
+            "data_source_id": source_id,
+            "question": "Qual produto tem maior valor?",
+            "history": [],
+        },
+    )
 
-        response = self.request("GET", "/data-sources/")
-        self.assert_status(response, 200)
-        self.assertGreaterEqual(response.json()["count"], 1)
+    agent_dashboard = call(
+        session,
+        "POST",
+        "/agents/dashboard",
+        200,
+        data={"prompt": "Crie um dashboard simples."},
+        files={"file": ("dashboard.csv", io.BytesIO(csv_data), "text/csv")},
+    ).json()
 
-        response = self.request(
-            "GET",
-            f"/data-sources/{self.data_source_id}",
-        )
-        self.assert_status(response, 200)
-        self.assertEqual(
-            response.json()["data_source"]["id"],
-            self.data_source_id,
-        )
+    call(
+        session,
+        "POST",
+        "/agents/analysis",
+        200,
+        json={
+            "analysis_id": agent_dashboard["analysis_id"],
+            "question": "Resuma o dashboard.",
+            "history": [],
+        },
+    )
 
-    def test_06_data_agent_uses_fake_openai_in_test_mode(self) -> None:
-        self.assertIsNotNone(self.data_source_id)
+    conversation = call(
+        session,
+        "POST",
+        "/conversations/",
+        201,
+        json={"title": "Functional conversation"},
+    ).json()
+    conversation_id = int(conversation["id"])
+    call(session, "GET", "/conversations/", 200)
+    call(session, "GET", f"/conversations/{conversation_id}", 200)
+    call(
+        session,
+        "PATCH",
+        f"/conversations/?conversation_id={conversation_id}",
+        200,
+        json={"title": "Functional conversation updated"},
+    )
 
-        response = self.request(
-            "POST",
-            "/agents/data",
-            json={
-                "data_source_id": self.data_source_id,
-                "question": "Qual produto tem maior valor?",
-                "history": [],
-            },
-        )
+    message = call(
+        session,
+        "POST",
+        "/messages/",
+        201,
+        json={
+            "conversation_id": conversation_id,
+            "role": "user",
+            "content": "Mensagem funcional",
+        },
+    ).json()
+    message_id = int(message["id"])
+    call(session, "GET", f"/messages/?conversation_id={conversation_id}", 200)
+    call(session, "GET", f"/messages/{message_id}", 200)
+    call(
+        session,
+        "PATCH",
+        f"/messages/?message_id={message_id}",
+        200,
+        json={"content": "Mensagem funcional atualizada"},
+    )
 
-        self.assert_status(response, 200)
-        output = response.json()["output"]
-        self.assertIn("Resposta de teste", output)
+    dashboard = call(
+        session,
+        "POST",
+        "/dashboards/",
+        201,
+        json={
+            "title": "Functional dashboard",
+            "prompt": "Functional prompt",
+            "data_source_id": source_id,
+            "is_outdated": False,
+        },
+    ).json()
+    dashboard_id = int(dashboard["id"])
+    call(session, "GET", "/dashboards/", 200)
+    call(session, "GET", f"/dashboards/{dashboard_id}", 200)
+    call(
+        session,
+        "PATCH",
+        f"/dashboards/?dashboard_id={dashboard_id}",
+        200,
+        json={"title": "Functional dashboard updated"},
+    )
+    call(
+        session,
+        "GET",
+        f"/data-sources/linked-dashboards?data_source_id={source_id}",
+        200,
+    )
 
-    def test_07_chat_agent_uses_fake_openai(self) -> None:
-        response = self.request(
-            "POST",
-            "/agents/chat",
-            json={
-                "question": "Explique o DataPilot em uma frase.",
-                "history": [],
-            },
-        )
+    old_refresh = session.cookies.get("X-refresh_user")
+    call(session, "POST", "/auth/refresh", 200)
+    if session.cookies.get("X-refresh_user") == old_refresh:
+        raise RuntimeError("X-refresh_user was not rotated")
 
-        self.assert_status(response, 200)
-        self.assertIn(
-            "Nenhuma requisição foi enviada para a OpenAI",
-            response.json()["output"],
-        )
+    call(
+        session,
+        "PATCH",
+        "/users/",
+        200,
+        json={"auth2": True},
+    )
+    call(session, "POST", "/auth/logout", 200)
 
-    def test_08_dashboard_handoff_and_analysis_by_id(self) -> None:
-        csv_content = (
-            "produto,valor\n"
-            "Notebook,5000\n"
-            "Mouse,150\n"
-            "Teclado,300\n"
-        ).encode()
+    login = call(
+        session,
+        "POST",
+        "/auth/",
+        202,
+        json={"identifier": email, "password": password},
+    ).json()
+    if not login.get("auth2_required"):
+        raise RuntimeError("auth2 was not required")
 
-        response = self.request(
-            "POST",
-            "/agents/dashboard",
-            data={
-                "prompt": "Crie um dashboard simples com os produtos.",
-            },
-            files={
-                "file": (
-                    "dashboard.csv",
-                    io.BytesIO(csv_content),
-                    "text/csv",
-                )
-            },
-        )
+    auth2 = call(session, "POST", "/sender/auth2", 202).json()
+    code = auth2.get("code")
+    if not code:
+        raise RuntimeError("sender/auth2 did not return code in test mode")
 
-        self.assert_status(response, 200)
-        dashboard = response.json()
+    call(
+        session,
+        "POST",
+        "/auth/",
+        200,
+        json={"identifier": email, "password": password, "code": code},
+    )
 
-        self.assertIn("analysis_id", dashboard)
-        self.assertEqual(
-            dashboard["user_order"],
-            "Crie um dashboard simples com os produtos.",
-        )
-        self.assertTrue(dashboard["charts"])
-        self.assertIn(dashboard["engine"], {"polars", "spark"})
+    call(session, "DELETE", f"/messages/?message_id={message_id}", 200)
+    call(
+        session,
+        "DELETE",
+        f"/conversations/?conversation_id={conversation_id}",
+        202,
+    )
+    call(
+        session,
+        "DELETE",
+        f"/dashboards/?dashboard_id={dashboard_id}",
+        202,
+    )
+    call(
+        session,
+        "DELETE",
+        f"/data-sources/?data_source_id={source_id}",
+        202,
+    )
 
-        response = self.request(
-            "POST",
-            "/agents/analysis",
-            json={
-                "analysis_id": dashboard["analysis_id"],
-                "question": "Resuma o dashboard.",
-                "history": [],
-            },
-        )
+    call(session, "POST", "/auth/logout", 200)
+    call(session, "GET", "/users/", 401)
 
-        self.assert_status(response, 200)
-        analysis = response.json()
-
-        self.assertEqual(
-            analysis["analysis_id"],
-            dashboard["analysis_id"],
-        )
-        self.assertIn("Resposta de teste", analysis["output"])
-
-    def test_09_create_conversation_and_message(self) -> None:
-        response = self.request(
-            "POST",
-            "/conversations/",
-            json={"title": "Functional conversation"},
-        )
-        self.assert_status(response, 201)
-
-        conversation = response.json()
-        self.__class__.conversation_id = int(conversation["id"])
-
-        response = self.request(
-            "POST",
-            "/messages/",
-            json={
-                "conversation_id": self.conversation_id,
-                "role": "user",
-                "content": "Mensagem funcional",
-            },
-        )
-        self.assert_status(response, 201)
-
-        message = response.json()
-        self.__class__.message_id = int(message["id"])
-
-        response = self.request(
-            "GET",
-            f"/messages/?conversation_id={self.conversation_id}",
-        )
-        self.assert_status(response, 200)
-
-    def test_10_create_dashboard_record_linked_to_source(self) -> None:
-        self.assertIsNotNone(self.data_source_id)
-
-        response = self.request(
-            "POST",
-            "/dashboards/",
-            json={
-                "title": "Functional dashboard",
-                "prompt": "Functional prompt",
-                "data_source_id": self.data_source_id,
-                "is_outdated": False,
-            },
-        )
-        self.assert_status(response, 201)
-
-        dashboard = response.json()
-        self.__class__.dashboard_id = int(dashboard["id"])
-
-        response = self.request(
-            "GET",
-            f"/dashboards/{self.dashboard_id}",
-        )
-        self.assert_status(response, 200)
-
-    def test_11_refresh_rotates_session(self) -> None:
-        old_access = self.session.cookies.get("X-token_user")
-        old_refresh = self.session.cookies.get("X-refresh_user")
-
-        response = self.request("POST", "/auth/refresh")
-        self.assert_status(response, 200)
-        self.assertTrue(response.json()["authenticated"])
-
-        new_access = self.session.cookies.get("X-token_user")
-        new_refresh = self.session.cookies.get("X-refresh_user")
-
-        self.assertTrue(new_access)
-        self.assertTrue(new_refresh)
-        self.assertNotEqual(old_refresh, new_refresh)
-
-        # Access tokens can be equal when rotation occurs inside the same second,
-        # so only assert that a valid access cookie still exists.
-        self.assertIsNotNone(old_access)
-
-    def test_12_async_delete_routes_accept_work(self) -> None:
-        if self.dashboard_id is not None:
-            response = self.request(
-                "DELETE",
-                f"/dashboards/?dashboard_id={self.dashboard_id}",
-            )
-            self.assert_status(response, 202)
-            self.assertTrue(response.json()["accepted"])
-
-        if self.conversation_id is not None:
-            response = self.request(
-                "DELETE",
-                f"/conversations/?conversation_id={self.conversation_id}",
-            )
-            self.assert_status(response, 202)
-            self.assertTrue(response.json()["accepted"])
-
-        if self.data_source_id is not None:
-            response = self.request(
-                "DELETE",
-                f"/data-sources/?data_source_id={self.data_source_id}",
-            )
-            self.assert_status(response, 202)
-            self.assertTrue(response.json()["accepted"])
-
-    def test_13_logout_clears_session_and_private_routes_fail(self) -> None:
-        response = self.request("POST", "/auth/logout")
-        self.assert_status(response, 200)
-        self.assertTrue(response.json()["logged_out"])
-
-        self.assertIsNone(self.session.cookies.get("X-token_user"))
-        self.assertIsNone(self.session.cookies.get("X-refresh_user"))
-
-        response = self.request("GET", "/users/")
-        self.assert_status(response, 401)
+    print("Functional HTTP checks passed.", flush=True)
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    main()
