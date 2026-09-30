@@ -76,8 +76,8 @@ async def notify():
 Banco SQL externo exige um driver compatível com asyncio instalado:
 
 ```python
-external = infra.external_database("postgresql+psycopg://user:password@host/database",
-                                   connect_args={"connect_timeout": 10})
+external = infra.external_database("postgresql+asyncpg://user:password@host:5432/database",
+                                   connect_args={"timeout": 10})
 async def use_external():
     try:
         engine, sessions = await external()
@@ -142,6 +142,13 @@ async def shutdown():
 
 `create_client()` reutiliza o cliente; `test()` e `test_connection()` executam
 PING. `infra.close()` encerra PostgreSQL e Redis. Importar não acessa o servidor.
+
+## OpenAI em ambiente de teste
+
+Com `ENVIROIMENT=test` e `OPENAI_API_KEY` vazia, o cliente OpenAI entra em modo
+de teste e não realiza requests externas. Os agents retornam respostas
+determinísticas de teste; o planner de dashboards retorna um plano válido para o
+pipeline continuar funcionando. Em `ENVIROIMENT=prod`, a chave é obrigatória.
 
 
 ## Prompts de IA
