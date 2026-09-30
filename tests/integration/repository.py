@@ -1,0 +1,360 @@
+"""Run: pip install -r tests/integration/requirements.txt && python tests/integration/repository.py.
+
+Starts an isolated local PostgreSQL and creates a private schema per test.
+No production configuration or credentials are used.
+"""
+
+import asyncio
+import sys
+import tempfile
+import unittest
+from datetime import timedelta
+from pathlib import Path
+from uuid import uuid4
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+import pgserver
+from sqlalchemy import func, text, update
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from src.backend.logs.log import logger
+from src.backend.repository.manage import ControlDb, Migration
+from src.backend.repository.db.control_base import RecordNotFoundError, TransactionRequiredError
+from src.backend.repository.db.models import ValidationAccount
+
+
+class RepositoryTests(unittest.IsolatedAsyncioTestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.previous_log_level = logger.level
+        logger.setLevel('WARNING')
+        cls.directory = tempfile.TemporaryDirectory(prefix='datapilot-control-tests-')
+        cls.server = pgserver.get_server(Path(cls.directory.name) / 'data', cleanup_mode='stop')
+        cls.url = make_url(cls.server.get_uri()).set(drivername='postgresql+psycopg')
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.cleanup()
+        cls.directory.cleanup()
+        logger.setLevel(cls.previous_log_level)
+
+    async def asyncSetUp(self):
+        self.schema = 'control_test_' + uuid4().hex
+        self.engine = create_async_engine(self.url, connect_args={'options': '-c search_path=' + self.schema})
+        async with self.engine.begin() as connection:
+            await connection.execute(text('CREATE SCHEMA ' + self.schema))
+        await Migration(self.engine)()
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self):
+        async with self.engine.begin() as connection:
+            await connection.execute(text('DROP SCHEMA ' + self.schema + ' CASCADE'))
+        await self.engine.dispose()
+
+    async def user(self, suffix='owner'):
+        async with self.sessions() as session, session.begin():
+            return (await ControlDb(session).users.create({
+                'name': suffix, 'username': suffix, 'email': suffix + '@example.com',
+                'password': 'stored-hash', 'age': 18, 'gender': 'other',
+            }))['item']
+
+    async def dashboard(self, owner_id):
+        async with self.sessions() as session, session.begin():
+            return (await ControlDb(session).dashboards.create({'user_id': owner_id, 'title': 'Test'}))['item']
+
+    async def test_crud_filters_and_context_transactions(self):
+        async with self.sessions() as session:
+            control = ControlDb(session).users
+            automatic = await control.create({'name': 'Auto', 'username': 'auto',
+                'email': 'auto@example.com', 'password': 'hash', 'age': 18, 'gender': 'other'})
+            self.assertFalse(session.in_transaction())
+            self.assertTrue((await control.get(automatic['item']['user_id']))['found'])
+            await control.delete(automatic['item']['user_id'])
+            self.assertFalse(session.in_transaction())
+            await session.execute(text('SELECT 1'))
+            with self.assertRaises(TransactionRequiredError):
+                await control.list()
+            await session.rollback()
+            with self.assertRaises(ValueError):
+                await control.create({'unknown_column': 'invalid'})
+            self.assertFalse(session.in_transaction())
+            self.assertEqual((await control.list())['count'], 0)
+        owner = await self.user()
+        async with self.sessions() as session, session.begin():
+            control = ControlDb(session).users
+            self.assertEqual((await control.get_by_email('OWNER@EXAMPLE.COM'))['item']['user_id'], owner['user_id'])
+            self.assertFalse((await control.update(owner['user_id'], {'name': 'Wrong'}, expected={'name': 'stale'}))['updated'])
+            changed = await control.update(owner['user_id'], {'name': 'Changed'}, expected={'name': 'owner'})
+            self.assertTrue(changed['updated'])
+            with self.assertRaises(ValueError):
+                await control.update(owner['user_id'], {'user_id': 99})
+            self.assertEqual((await control.list())['count'], 1)
+            self.assertTrue((await control.delete(owner['user_id']))['deleted'])
+
+    async def test_rollback_preserves_all_tables(self):
+        owner = await self.user()
+        try:
+            async with self.sessions() as session, session.begin():
+                await ControlDb(session).conversations.create({'user_id': owner['user_id'], 'title': 'Rollback'})
+                await ControlDb(session).dashboards.create({'user_id': owner['user_id'], 'title': 'Rollback'})
+                raise RuntimeError('abort transaction')
+        except RuntimeError:
+            pass
+        async with self.sessions() as session:
+            self.assertEqual((await ControlDb(session).conversations.list())['count'], 0)
+            self.assertEqual((await ControlDb(session).dashboards.list())['count'], 0)
+
+    async def test_concurrent_duplicate_email_is_rejected_by_database(self):
+        async def insert_user(username):
+            try:
+                async with self.sessions() as session, session.begin():
+                    await ControlDb(session).users.create({'name': 'Test', 'username': username,
+                        'email': 'duplicate@example.com', 'password': 'hash', 'age': 18, 'gender': 'other'})
+                return True
+            except IntegrityError:
+                return False
+        results = await asyncio.gather(insert_user('first'), insert_user('second'))
+        self.assertEqual(sum(results), 1)
+
+    async def test_concurrent_account_code_consumption_and_expiration(self):
+        async with self.sessions() as session, session.begin():
+            await ControlDb(session).validation_account.issue('test@example.com', '012345')
+        async def consume():
+            async with self.sessions() as session, session.begin():
+                return (await ControlDb(session).validation_account.consume('test@example.com', '012345'))['consumed']
+        self.assertEqual(sum(await asyncio.gather(consume(), consume())), 1)
+        async with self.sessions() as session, session.begin():
+            code = (await ControlDb(session).validation_account.issue('test@example.com', '654321'))['item']
+            await session.execute(update(ValidationAccount).where(ValidationAccount.validation_id == code['validation_id']).values(created_at=func.now() - timedelta(hours=1)))
+            self.assertFalse((await ControlDb(session).validation_account.consume('test@example.com', '654321'))['consumed'])
+
+    async def test_concurrent_password_code_consumption(self):
+        owner = await self.user()
+        async with self.sessions() as session, session.begin():
+            await ControlDb(session).validation.issue(owner['user_id'], '012345')
+        async def consume():
+            async with self.sessions() as session, session.begin():
+                return (await ControlDb(session).validation.consume(owner['user_id'], '012345'))['consumed']
+        self.assertEqual(sum(await asyncio.gather(consume(), consume())), 1)
+
+    async def test_conversation_scope_and_message_atomicity(self):
+        owner, other = await self.user(), await self.user('other')
+        async with self.sessions() as session, session.begin():
+            conversation = (await ControlDb(session).conversations.create({'user_id': owner['user_id'], 'title': 'Test'}))['item']
+            with self.assertRaises(RecordNotFoundError):
+                await ControlDb(session).messages.append(conversation['id'], other['user_id'], 'user', 'Forbidden')
+            await ControlDb(session).messages.append(conversation['id'], owner['user_id'], 'user', 'Test')
+            self.assertEqual((await ControlDb(session).messages.list_by_conversation(conversation['id'], owner['user_id']))['count'], 1)
+            self.assertEqual((await ControlDb(session).messages.list_by_conversation(conversation['id'], other['user_id']))['count'], 0)
+            self.assertFalse((await ControlDb(session).conversations.delete_owned(conversation['id'], other['user_id']))['deleted'])
+            await ControlDb(session).conversations.delete_owned(conversation['id'], owner['user_id'])
+            self.assertEqual((await ControlDb(session).messages.list())['count'], 0)
+
+    async def test_concurrent_settings_saves_produce_one_row(self):
+        owner = await self.user()
+        dashboard = await self.dashboard(owner['user_id'])
+        async def save(color):
+            async with self.sessions() as session, session.begin():
+                return await ControlDb(session).dashboard_chart_settings.save(dashboard['id'], {'chart_color': color})
+        await asyncio.gather(save('red'), save('blue'))
+        async with self.sessions() as session:
+            rows = await ControlDb(session).dashboard_chart_settings.list(filters={'dashboard_id': dashboard['id']})
+            self.assertEqual(rows['count'], 1)
+
+    async def test_concurrent_invitation_response_has_one_winner(self):
+        owner, other = await self.user(), await self.user('other')
+        dashboard = await self.dashboard(owner['user_id'])
+        async with self.sessions() as session, session.begin():
+            collaboration = (await ControlDb(session).dashboard_collaborations.invite(dashboard['id'], owner['user_id'], other['user_id'], 'read'))['item']
+        async def respond(value):
+            async with self.sessions() as session, session.begin():
+                return (await ControlDb(session).dashboard_collaborations.respond(collaboration['id'], other['user_id'], value))['updated']
+        self.assertEqual(sum(await asyncio.gather(respond('accepted'), respond('declined'))), 1)
+
+    async def test_refresh_version_and_failed_replacement(self):
+        owner = await self.user()
+        dashboard = await self.dashboard(owner['user_id'])
+        charts = [{'chart_type': 'bar', 'title': 'Original', 'chart_data': []}]
+        async with self.sessions() as session, session.begin():
+            await ControlDb(session).dashboard_charts.replace_all(dashboard['id'], charts)
+            with self.assertRaises(IntegrityError):
+                await ControlDb(session).dashboard_charts.replace_all(dashboard['id'], [{'chart_type': 'bar', 'title': None, 'chart_data': []}])
+            self.assertEqual((await ControlDb(session).dashboard_charts.list_by_dashboard(dashboard['id']))['items'][0]['title'], 'Original')
+        async def refresh(title):
+            async with self.sessions() as session, session.begin():
+                return (await ControlDb(session).dashboards.finish_refresh(
+                    dashboard['id'], owner['user_id'], dashboard['updated_at'],
+                    [{'chart_type': 'bar', 'title': title, 'chart_data': []}], 'Analysis',
+                ))['updated']
+        self.assertEqual(sum(await asyncio.gather(refresh('First'), refresh('Second'))), 1)
+
+    async def test_concurrent_source_claims_and_stale_lease(self):
+        owner = await self.user()
+        async with self.sessions() as session, session.begin():
+            source = (await ControlDb(session).data_sources.create({'user_id': owner['user_id'], 'name': 'Source',
+                'file_name': 'api', 'file_data': [], 'row_count': 0, 'column_count': 0,
+                'source_type': 'web', 'refresh_interval_days': 1, 'next_sync_at': func.now() - timedelta(days=1)}))['item']
+        async def claim():
+            async with self.sessions() as session, session.begin():
+                return await ControlDb(session).data_sources.claim_due(owner['user_id'])
+        claims = await asyncio.gather(claim(), claim())
+        self.assertEqual(sum(result['count'] for result in claims), 1)
+        claimed = next(result['items'][0] for result in claims if result['count'])
+        async with self.sessions() as session, session.begin():
+            control = ControlDb(session).data_sources
+            data = {'file_data': [{'a': 1}], 'row_count': 1, 'column_count': 1}
+            self.assertFalse((await control.finish_sync(source['id'], owner['user_id'], data, source['next_sync_at']))['updated'])
+            self.assertTrue((await control.finish_sync(source['id'], owner['user_id'], data, claimed['next_sync_at']))['updated'])
+            self.assertFalse((await control.finish_sync(source['id'], owner['user_id'], data, claimed['next_sync_at']))['updated'])
+
+    async def test_notification_scope(self):
+        owner, other = await self.user(), await self.user('other')
+        async with self.sessions() as session, session.begin():
+            control = ControlDb(session).collaboration_notifications
+            notification = (await control.create({'user_id': owner['user_id'], 'message': 'Test', 'notification_type': 'invitation'}))['item']
+            self.assertFalse((await control.mark_read(notification['id'], other['user_id']))['updated'])
+            self.assertEqual((await control.mark_all_read(owner['user_id']))['count'], 1)
+            self.assertEqual((await control.mark_all_read(owner['user_id']))['count'], 0)
+
+    async def test_manager_and_crud_for_every_table(self):
+        owner, other = await self.user(), await self.user('other')
+        dashboard = await self.dashboard(owner['user_id'])
+        async with self.sessions() as session:
+            db = ControlDb(session)
+            self.assertEqual(len(vars(db)), 11)
+            self.assertTrue(all(control.session is session for control in vars(db).values()))
+            self.assertFalse(session.in_transaction())
+            conversation = (await db.conversations.create({'user_id': owner['user_id'], 'title': 'Parent'}))['item']
+            cases = {
+                'users': ({'name': 'CRUD', 'username': 'crud', 'email': 'crud@example.com',
+                           'password': 'hash', 'age': 18, 'gender': 'other'}, {'name': 'Changed'}),
+                'validation': ({'user_id': owner['user_id'], 'number': '123456'}, {'number': '654321'}),
+                'validation_account': ({'email': 'crud@example.com', 'number': '123456'}, {'used': True}),
+                'conversations': ({'user_id': owner['user_id'], 'title': 'CRUD'}, {'title': 'Changed'}),
+                'messages': ({'conversation_id': conversation['id'], 'role': 'user', 'content': 'CRUD'}, {'content': 'Changed'}),
+                'data_sources': ({'user_id': owner['user_id'], 'name': 'CRUD', 'file_name': 'file',
+                                  'file_data': [], 'row_count': 0, 'column_count': 0}, {'name': 'Changed'}),
+                'dashboards': ({'user_id': owner['user_id'], 'title': 'CRUD'}, {'title': 'Changed'}),
+                'dashboard_charts': ({'dashboard_id': dashboard['id'], 'chart_type': 'bar',
+                                      'title': 'CRUD', 'chart_data': []}, {'title': 'Changed'}),
+                'dashboard_chart_settings': ({'dashboard_id': dashboard['id']}, {'chart_color': 'red'}),
+                'dashboard_collaborations': ({'dashboard_id': dashboard['id'], 'owner_user_id': owner['user_id'],
+                                             'collaborator_user_id': other['user_id'], 'permission': 'read'}, {'permission': 'edit'}),
+                'collaboration_notifications': ({'user_id': owner['user_id'], 'message': 'CRUD',
+                                                 'notification_type': 'invitation'}, {'message': 'Changed'}),
+            }
+            for name, (values, change) in cases.items():
+                with self.subTest(table=name):
+                    control = getattr(db, name)
+                    created = await control.create(values)
+                    self.assertIsInstance(created, dict)
+                    record_id = created['item'][control.primary_key.name]
+                    filters = {control.primary_key.name: record_id}
+                    fetched = await control.get(record_id, for_update=True)
+                    self.assertEqual(fetched['item'], created['item'])
+                    listed = await control.list(filters=filters, limit=1)
+                    self.assertEqual(listed, {'items': [created['item']], 'count': 1})
+                    self.assertEqual((await control.list(filters=filters, offset=1))['count'], 0)
+                    self.assertFalse((await control.update(record_id, change, expected={control.primary_key.name: -1}))['updated'])
+                    changed = await control.update(record_id, change)
+                    self.assertTrue(changed['updated'])
+                    for key, value in change.items():
+                        self.assertEqual(changed['item'][key], value)
+                    self.assertFalse((await control.delete(record_id, expected={control.primary_key.name: -1}))['deleted'])
+                    self.assertEqual(await control.delete(record_id), {'deleted': True, 'id': record_id})
+                    self.assertEqual(await control.get(record_id), {'found': False, 'item': None})
+                    self.assertFalse((await control.update(record_id, change))['updated'])
+                    self.assertFalse((await control.delete(record_id))['deleted'])
+                    self.assertFalse(session.in_transaction())
+        with self.assertRaises(TypeError):
+            ControlDb(None)
+
+    async def test_scoped_queries_and_dashboard_aggregation(self):
+        owner, other = await self.user(), await self.user('other')
+        async with self.sessions() as session:
+            db = ControlDb(session)
+            user_id = owner['user_id']
+            self.assertEqual((await db.users.get_by_username(' OWNER '))['item']['user_id'], user_id)
+            self.assertFalse((await db.users.get_by_username('missing'))['found'])
+            self.assertFalse((await db.users.get_by_email('missing@example.com'))['found'])
+            changed = await db.users.update(user_id, {'username': ' RENAMED ', 'email': ' RENAMED@EXAMPLE.COM '})
+            self.assertEqual(changed['item']['username'], 'renamed')
+            self.assertEqual(changed['item']['email'], 'renamed@example.com')
+            conversation = (await db.conversations.create({'user_id': user_id, 'title': 'Owned'}))['item']
+            self.assertTrue((await db.conversations.get_owned(conversation['id'], user_id, for_update=True))['found'])
+            self.assertFalse((await db.conversations.get_owned(conversation['id'], other['user_id']))['found'])
+            self.assertEqual((await db.conversations.list_by_user(user_id))['count'], 1)
+            self.assertEqual((await db.conversations.list_by_user(other['user_id']))['count'], 0)
+            source = (await db.data_sources.create({'user_id': user_id, 'name': 'Source', 'file_name': 'file',
+                'file_data': [], 'row_count': 0, 'column_count': 0}))['item']
+            self.assertEqual((await db.data_sources.list_by_user(user_id))['count'], 1)
+            self.assertEqual((await db.data_sources.list_by_user(other['user_id']))['count'], 0)
+            dashboard = (await db.dashboards.create({'user_id': user_id, 'title': 'Dashboard', 'data_source_id': source['id']}))['item']
+            self.assertEqual((await db.dashboards.list_by_user(user_id))['count'], 1)
+            self.assertEqual((await db.dashboards.list_by_user(other['user_id']))['count'], 0)
+            replacement = await db.dashboard_charts.replace_all(dashboard['id'], [{'chart_type': 'bar', 'title': 'Chart', 'chart_data': []}])
+            chart_id = replacement['items'][0]['id']
+            settings = await db.dashboard_chart_settings.save(dashboard['id'], {'chart_color': 'red'}, chart_id=chart_id)
+            saved = await db.dashboard_chart_settings.save(dashboard['id'], {'chart_color': 'blue'}, chart_id=chart_id)
+            self.assertEqual(saved['item']['id'], settings['item']['id'])
+            self.assertEqual(saved['item']['chart_color'], 'blue')
+            combined = await db.dashboards.get_with_charts(dashboard['id'], user_id)
+            self.assertEqual(combined['item']['charts'], replacement['items'])
+            self.assertEqual(combined['item']['chart_settings'], [saved['item']])
+            with self.assertRaises(RecordNotFoundError):
+                await db.dashboards.get_with_charts(dashboard['id'], other['user_id'])
+            marked = await db.dashboards.mark_outdated_by_source(source['id'])
+            self.assertEqual(marked['count'], 1)
+            self.assertTrue(marked['items'][0]['is_outdated'])
+            self.assertEqual((await db.dashboards.mark_outdated_by_source(-1))['count'], 0)
+            refreshed = await db.dashboards.finish_refresh(dashboard['id'], user_id, marked['items'][0]['updated_at'], [{'chart_type': 'bar', 'title': 'Refreshed', 'chart_data': []}], 'Analysis', prompt='New prompt')
+            self.assertTrue(refreshed['updated'])
+            self.assertEqual(refreshed['item']['prompt'], 'New prompt')
+            self.assertFalse(refreshed['item']['is_outdated'])
+            self.assertEqual((await db.dashboard_charts.list_by_dashboard(dashboard['id']))['items'][0]['title'], 'Refreshed')
+            note = (await db.collaboration_notifications.create({'user_id': user_id, 'message': 'Test', 'notification_type': 'invitation'}))['item']
+            self.assertEqual((await db.collaboration_notifications.list_by_user(user_id))['count'], 1)
+            self.assertEqual((await db.collaboration_notifications.list_by_user(other['user_id']))['count'], 0)
+            self.assertTrue((await db.collaboration_notifications.mark_read(note['id'], user_id))['updated'])
+            self.assertTrue((await db.collaboration_notifications.get(note['id']))['item']['is_read'])
+
+    async def test_invalid_inputs_rollback_and_session_remains_usable(self):
+        owner = await self.user()
+        dashboard = await self.dashboard(owner['user_id'])
+        async with self.sessions() as session:
+            db = ControlDb(session)
+            calls = [
+                lambda: db.users.list(limit=0),
+                lambda: db.users.list(offset=-1),
+                lambda: db.users.list(filters={'unknown': 1}),
+                lambda: db.users.create({'unknown': 1}),
+                lambda: db.users.update(owner['user_id'], {'user_id': 99}),
+                lambda: db.validation.issue(owner['user_id'], 'abc'),
+                lambda: db.validation.consume(owner['user_id'], '123456', max_age=timedelta(0)),
+                lambda: db.validation_account.issue('test@example.com', 'abc'),
+                lambda: db.validation_account.consume('test@example.com', '123456', max_age=timedelta(0)),
+                lambda: db.messages.append(-1, owner['user_id'], 'invalid', 'text'),
+                lambda: db.messages.list_by_conversation(-1, owner['user_id'], limit=0),
+                lambda: db.dashboard_collaborations.invite(dashboard['id'], owner['user_id'], owner['user_id'], 'read'),
+                lambda: db.dashboard_collaborations.respond(-1, owner['user_id'], 'invalid'),
+            ]
+            for call in calls:
+                with self.assertRaises(ValueError):
+                    await call()
+                self.assertFalse(session.in_transaction())
+            with self.assertRaises(RecordNotFoundError):
+                await db.dashboard_chart_settings.save(dashboard['id'], {'chart_color': 'red'}, chart_id=-1)
+            with self.assertRaises(RecordNotFoundError):
+                await db.validation.issue(-1, '123456')
+            with self.assertRaises(IntegrityError):
+                await db.users.create({'name': 'Duplicate', 'username': 'duplicate', 'email': owner['email'],
+                    'password': 'hash', 'age': 18, 'gender': 'other'})
+            self.assertFalse(session.in_transaction())
+            self.assertEqual((await db.users.list())['count'], 1)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

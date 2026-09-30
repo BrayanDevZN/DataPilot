@@ -181,7 +181,7 @@ aplicá-lo. Os demais FKs/constraints dos models também precisam existir no sch
 
 ```bash
 pip install -r tests/integration/requirements.txt
-python tests/integration/db_control.py
+python tests/integration/repository.py
 ```
 
 O script inicia um PostgreSQL temporário local, cria um schema privado por teste,
