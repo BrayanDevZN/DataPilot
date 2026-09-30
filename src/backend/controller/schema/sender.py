@@ -1,4 +1,4 @@
-"""Schemas for email sender routes."""
+"""Schemas for public transactional email routes."""
 
 from typing import Literal
 
@@ -7,12 +7,8 @@ from pydantic import EmailStr, field_validator
 from .common import StrictSchema, normalize_verification_code
 
 
-EmailTemplate = Literal["create_account", "change_password", "auth2"]
-
-
-class SenderRequest(StrictSchema):
+class SenderBaseRequest(StrictSchema):
     email: EmailStr
-    template: EmailTemplate
     code: str
 
     @field_validator("code", mode="before")
@@ -21,7 +17,19 @@ class SenderRequest(StrictSchema):
         return normalize_verification_code(value)
 
 
+class CreateAccountEmailRequest(SenderBaseRequest):
+    pass
+
+
+class ChangePasswordEmailRequest(SenderBaseRequest):
+    pass
+
+
+class Auth2EmailRequest(SenderBaseRequest):
+    pass
+
+
 class SenderResponse(StrictSchema):
     sent: bool
-    template: EmailTemplate
+    type: Literal["create_account", "change_password", "auth2"]
     email: EmailStr
