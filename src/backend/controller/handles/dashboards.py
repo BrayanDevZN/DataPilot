@@ -47,7 +47,7 @@ async def _validate_source(
         )
 
 
-@router.get("")
+@router.get("/")
 async def list_dashboards(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -63,7 +63,7 @@ async def list_dashboards(
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_dashboard(
     data: DashboardCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -104,9 +104,9 @@ async def get_dashboard(
     return result["item"]
 
 
-@router.patch("/{dashboard_id}")
+@router.patch("/")
 async def update_dashboard(
-    dashboard_id: int,
+    dashboard_id: int = Query(..., gt=0),
     data: DashboardUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -140,11 +140,11 @@ async def update_dashboard(
 
 
 @router.delete(
-    "/{dashboard_id}",
+    "/",
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_dashboard(
-    dashboard_id: int,
+    dashboard_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
