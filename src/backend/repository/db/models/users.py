@@ -27,6 +27,7 @@ class User(Base):
     password: Mapped[str] = mapped_column(Text)
     role: Mapped[str] = mapped_column(Text, server_default="user")
     status: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    auth2: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     age: Mapped[int] = mapped_column(Integer)
     gender: Mapped[str] = mapped_column(Text)
     profile_image: Mapped[str | None] = mapped_column(Text)
