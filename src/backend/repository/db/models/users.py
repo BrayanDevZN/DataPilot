@@ -30,7 +30,10 @@ class User(Base):
     profile_image: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    __table_args__ = (Index("users_username_lower_unique", func.lower(username), unique=True),)
+    __table_args__ = (
+        Index("users_username_lower_unique", func.lower(username), unique=True),
+        Index("users_email_lower_unique", func.lower(email), unique=True),
+    )
 
     validations: Mapped[list["Validation"]] = relationship(
         "Validation", back_populates="user", foreign_keys="Validation.user_id",
