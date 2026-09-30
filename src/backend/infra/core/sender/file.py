@@ -14,7 +14,7 @@ class EmailFiles:
     def read(self) -> dict[str, str]:
         templates = {
             name: (self._directory / f"{name}.html").read_text(encoding="utf-8")
-            for name in ("create_account", "change_password")
+            for name in ("create_account", "change_password", "auth2")
         }
         logger.info("Templates HTML de e-mail carregados: %s", len(templates))
         return templates
