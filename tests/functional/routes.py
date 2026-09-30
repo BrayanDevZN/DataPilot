@@ -372,6 +372,135 @@ def main() -> None:
         200,
     )
 
+    chart = call(
+        session,
+        "POST",
+        "/dashboard-charts/",
+        201,
+        json={
+            "dashboard_id": dashboard_id,
+            "chart_type": "bar",
+            "title": "Functional chart",
+            "chart_data": [{"label": "A", "value": 1}],
+            "chart_config": {},
+        },
+    ).json()
+    chart_id = int(chart["id"])
+    call(
+        session,
+        "GET",
+        f"/dashboard-charts/?dashboard_id={dashboard_id}",
+        200,
+    )
+    call(session, "GET", f"/dashboard-charts/{chart_id}", 200)
+    call(
+        session,
+        "PATCH",
+        f"/dashboard-charts/?chart_id={chart_id}",
+        200,
+        json={"title": "Functional chart updated"},
+    )
+
+    setting = call(
+        session,
+        "POST",
+        "/dashboard-chart-settings/",
+        201,
+        json={
+            "dashboard_id": dashboard_id,
+            "chart_id": chart_id,
+            "chart_color": "#000000",
+        },
+    ).json()
+    setting_id = int(setting["id"])
+    call(
+        session,
+        "GET",
+        f"/dashboard-chart-settings/?dashboard_id={dashboard_id}",
+        200,
+    )
+    call(
+        session,
+        "GET",
+        f"/dashboard-chart-settings/{setting_id}",
+        200,
+    )
+    call(
+        session,
+        "PATCH",
+        f"/dashboard-chart-settings/?setting_id={setting_id}",
+        200,
+        json={"show_legend": False},
+    )
+
+    collaboration = call(
+        session,
+        "POST",
+        "/dashboard-collaborations/",
+        201,
+        json={
+            "dashboard_id": dashboard_id,
+            "collaborator_user_id": collaborator["user_id"],
+            "permission": "read",
+        },
+    ).json()
+    collaboration_id = int(collaboration["id"])
+    call(session, "GET", "/dashboard-collaborations/", 200)
+    call(
+        session,
+        "GET",
+        f"/dashboard-collaborations/{collaboration_id}",
+        200,
+    )
+    call(
+        session,
+        "PATCH",
+        f"/dashboard-collaborations/?collaboration_id={collaboration_id}",
+        200,
+        json={"permission": "edit"},
+    )
+    call(
+        collaborator_session,
+        "POST",
+        f"/dashboard-collaborations/respond?collaboration_id={collaboration_id}",
+        200,
+        json={"response": "accepted"},
+    )
+
+    notification = call(
+        session,
+        "POST",
+        "/collaboration-notifications/",
+        202,
+        json={
+            "collaboration_id": collaboration_id,
+            "dashboard_id": dashboard_id,
+            "message": "Functional notification",
+            "notification_type": "functional",
+        },
+    ).json()
+    notification_id = int(notification["id"])
+    call(session, "GET", "/collaboration-notifications/", 200)
+    call(
+        session,
+        "GET",
+        f"/collaboration-notifications/{notification_id}",
+        200,
+    )
+    call(
+        session,
+        "PATCH",
+        f"/collaboration-notifications/?notification_id={notification_id}",
+        200,
+        json={"is_read": True},
+    )
+    call(
+        session,
+        "PATCH",
+        "/collaboration-notifications/read-all",
+        200,
+    )
+
     old_refresh = session.cookies.get("X-refresh_user")
     call(session, "POST", "/auth/refresh", 200)
     if session.cookies.get("X-refresh_user") == old_refresh:
