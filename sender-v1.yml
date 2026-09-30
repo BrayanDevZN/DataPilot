@@ -1,5 +1,5 @@
 x-configs: &app-config
-    env_file: ./sender/.env
+    env_file: ./.env
 
 services:
     kafka:
