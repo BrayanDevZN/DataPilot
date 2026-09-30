@@ -7,6 +7,7 @@ from .dashboard_collaborations import DashboardCollaborationCreate, DashboardCol
 from .dashboards import DashboardCreate, DashboardUpdate
 from .data_sources import DataSourceCreate, DataSourceUpdate
 from .messages import MessageCreate, MessageUpdate
+from .sender import SenderRequest, SenderResponse
 from .users import UserCreate, UserResponse, UserUpdate
 from .validation import ValidationConsume
 from .validation_account import ValidationAccountConsume, ValidationAccountIssue
@@ -16,6 +17,7 @@ __all__ = [
     "UserCreate", "UserResponse", "UserUpdate", "ValidationConsume",
     "ValidationAccountIssue", "ValidationAccountConsume",
     "ConversationCreate", "ConversationUpdate", "MessageCreate", "MessageUpdate",
+    "SenderRequest", "SenderResponse",
     "DataSourceCreate", "DataSourceUpdate", "DashboardCreate", "DashboardUpdate",
     "DashboardChartCreate", "DashboardChartUpdate",
     "DashboardChartSettingsSave", "DashboardChartSettingsUpdate",
