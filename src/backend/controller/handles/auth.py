@@ -1,6 +1,5 @@
 """Authentication routes for login, token refresh and logout."""
 
-from secrets import randbelow
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -27,10 +26,6 @@ from src.backend.service.manage import (
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-def _code() -> str:
-    return f"{randbelow(1_000_000):06d}"
 
 
 async def _find_user(
