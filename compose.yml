@@ -65,6 +65,8 @@ services:
       <<: *backend-environment
     ports:
       - "8000:8000"
+    volumes:
+      - sqlite-data:/data
     depends_on:
       redis:
         condition: service_healthy
@@ -81,8 +83,14 @@ services:
     restart: unless-stopped
     environment:
       <<: *backend-environment
+    volumes:
+      - sqlite-data:/data
     depends_on:
       redis:
         condition: service_healthy
       redis-celery:
         condition: service_healthy
+
+
+volumes:
+  sqlite-data:
