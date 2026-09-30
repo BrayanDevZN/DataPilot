@@ -50,7 +50,7 @@ async def _owned_dashboard(
         raise HTTPException(status_code=404, detail="Dashboard not found")
 
 
-@router.get("")
+@router.get("/")
 async def list_collaborations(
     dashboard_id: int | None = Query(None, ge=1),
     limit: int = Query(100, ge=1, le=1000),
@@ -92,7 +92,7 @@ async def list_collaborations(
     }
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_collaboration(
     data: DashboardCollaborationCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -150,9 +150,9 @@ async def get_collaboration(
     return item
 
 
-@router.patch("/{collaboration_id}")
+@router.patch("/")
 async def update_collaboration(
-    collaboration_id: int,
+    collaboration_id: int = Query(..., gt=0),
     data: DashboardCollaborationUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -173,9 +173,9 @@ async def update_collaboration(
     return result["item"]
 
 
-@router.post("/{collaboration_id}/respond")
+@router.post("/respond")
 async def respond_collaboration(
-    collaboration_id: int,
+    collaboration_id: int = Query(..., gt=0),
     data: DashboardCollaborationRespond,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -202,9 +202,9 @@ async def respond_collaboration(
     return result["item"]
 
 
-@router.delete("/{collaboration_id}")
+@router.delete("/")
 async def delete_collaboration(
-    collaboration_id: int,
+    collaboration_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
