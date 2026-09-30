@@ -7,13 +7,13 @@ from .dashboard_collaborations import DashboardCollaborationCreate, DashboardCol
 from .dashboards import DashboardCreate, DashboardUpdate
 from .data_sources import DataSourceCreate, DataSourceUpdate
 from .messages import MessageCreate, MessageUpdate
-from .users import UserCreate, UserUpdate
+from .users import UserCreate, UserResponse, UserUpdate
 from .validation import ValidationConsume
 from .validation_account import ValidationAccountConsume, ValidationAccountIssue
 
 __all__ = [
     "LoginRequest", "LoginResponse", "LogoutResponse", "RefreshResponse",
-    "UserCreate", "UserUpdate", "ValidationConsume",
+    "UserCreate", "UserResponse", "UserUpdate", "ValidationConsume",
     "ValidationAccountIssue", "ValidationAccountConsume",
     "ConversationCreate", "ConversationUpdate", "MessageCreate", "MessageUpdate",
     "DataSourceCreate", "DataSourceUpdate", "DashboardCreate", "DashboardUpdate",
