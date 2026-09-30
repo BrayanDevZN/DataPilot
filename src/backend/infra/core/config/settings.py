@@ -1,10 +1,11 @@
-"""Load DataPilot infrastructure settings from the local or repository environment."""
+"""Load and validate DataPilot infrastructure settings."""
 
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
+from sqlalchemy.engine import make_url
 
 from src.backend.logs.log import logger, log_operation
 
@@ -15,10 +16,15 @@ def load_environment(project_root: Path | None = None) -> Path | None:
     local_env = root / "src/backend/infra/core/config/.env"
     root_env = root / ".env"
     selected = local_env if local_env.is_file() else root_env
+
     if not selected.is_file():
         logger.info("Nenhum arquivo .env encontrado; usando variáveis do processo")
         return None
-    logger.info("Carregando configuração de %s; ambiente do processo tem prioridade", selected)
+
+    logger.info(
+        "Carregando configuração de %s; ambiente do processo tem prioridade",
+        selected,
+    )
     load_dotenv(selected, override=False)
     return selected
 
@@ -51,19 +57,58 @@ def positive_int(name: str, default: int) -> int:
         value = int(os.getenv(name, str(default)))
     except ValueError:
         raise ValueError(f"{name} must be a positive integer") from None
+
     if value <= 0:
         raise ValueError(f"{name} must be a positive integer")
     return value
 
 
+@log_operation
+def runtime_environment() -> str:
+    value = (os.getenv("ENVIROIMENT") or "test").strip().lower()
+    if value not in {"test", "prod"}:
+        raise ValueError("ENVIROIMENT must be test or prod")
+    return value
+
+
+@log_operation
+def resolve_database_url(environment: str, project_root: Path) -> str:
+    configured = (os.getenv("DATABASE_URL") or "").strip()
+
+    if configured:
+        url = make_url(configured)
+        if url.get_backend_name() in {"postgres", "postgresql"}:
+            if url.drivername != "postgresql+asyncpg":
+                raise ValueError(
+                    "PostgreSQL DATABASE_URL must explicitly use "
+                    "postgresql+asyncpg://"
+                )
+        elif url.drivername != "sqlite+aiosqlite":
+            raise ValueError(
+                "DATABASE_URL must use postgresql+asyncpg:// or "
+                "sqlite+aiosqlite://"
+            )
+        return configured
+
+    if environment == "prod":
+        raise ValueError("DATABASE_URL is required when ENVIROIMENT=prod")
+
+    sqlite_path = (
+        project_root
+        / "src"
+        / "backend"
+        / "repository"
+        / "db"
+        / "data.db"
+    ).resolve()
+    sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite+aiosqlite:///{sqlite_path}"
+
+
 @dataclass(frozen=True)
 class Settings:
-    db_name: str | None = None
-    db_host: str | None = None
-    db_user: str | None = None
-    db_password: str | None = field(default=None, repr=False)
-    database_url: str | None = field(default=None, repr=False)
-    db_port: int = 5432
+    enviroiment: str = "test"
+    database_url: str = field(default="", repr=False)
     db_connect_timeout: int = 10
     redis_host: str = "localhost"
     redis_port: int = 6379
@@ -83,29 +128,48 @@ class Settings:
     @classmethod
     @log_operation
     def from_env(cls, project_root: Path | None = None) -> "Settings":
-        load_environment(project_root)
+        root = (
+            project_root.resolve()
+            if project_root is not None
+            else Path(__file__).resolve().parents[5]
+        )
+        load_environment(root)
+
+        environment = runtime_environment()
+        openai_api_key = (os.getenv("OPENAI_API_KEY") or "").strip() or None
+
+        if environment == "prod" and openai_api_key is None:
+            raise ValueError(
+                "OPENAI_API_KEY is required when ENVIROIMENT=prod"
+            )
+
         return cls(
-            db_name=os.getenv("DB_NAME"),
-            db_host=os.getenv("DB_HOST"),
-            db_user=os.getenv("DB_USER"),
-            db_password=os.getenv("DB_PASSWORD"),
-            database_url=os.getenv("DATABASE_URL"),
-            db_port=positive_int("DB_PORT", 5432),
+            enviroiment=environment,
+            database_url=resolve_database_url(environment, root),
             db_connect_timeout=positive_int("DB_CONNECT_TIMEOUT", 10),
             redis_host=os.getenv("REDIS_HOST") or "localhost",
             redis_port=positive_int("REDIS_PORT", 6379),
             redis_db=int(os.getenv("REDIS_DB", "0")),
             email_timeout=positive_int("EMAIL_TIMEOUT", 30),
             url_sender=os.getenv("URL_SENDER") or "http://api:8000",
-            celery_broker_url=os.getenv("CELERY_BROKER_URL") or "redis://redis-celery:6379/0",
-            celery_backend_url=os.getenv("CELERY_BACKEND_URL") or "redis://redis-celery:6379/0",
+            celery_broker_url=(
+                os.getenv("CELERY_BROKER_URL")
+                or "redis://redis-celery:6379/0"
+            ),
+            celery_backend_url=(
+                os.getenv("CELERY_BACKEND_URL")
+                or "redis://redis-celery:6379/0"
+            ),
             url_email=os.getenv("URL_EMAIL"),
             secret=os.getenv("SECRET"),
             sing=os.getenv("SING"),
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            openai_api_key=openai_api_key,
             cors_allowed_origins=tuple(
                 origin.strip()
-                for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+                for origin in os.getenv(
+                    "CORS_ALLOWED_ORIGINS",
+                    "",
+                ).split(",")
                 if origin.strip()
             ),
             cookie_secure=env_bool("COOKIE_SECURE", False),
