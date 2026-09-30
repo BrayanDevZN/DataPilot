@@ -19,7 +19,7 @@ def _code() -> str:
     return f"{randbelow(1_000_000):06d}"
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def issue_validation(
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
