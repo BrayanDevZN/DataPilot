@@ -93,8 +93,8 @@ async def get_message(
 
 @router.patch("/")
 async def update_message(
-    message_id: int = Query(..., gt=0),
     data: MessageUpdate,
+    message_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
