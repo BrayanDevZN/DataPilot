@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import HTTPException, Request, Response, status
 
 from src.backend.domain.module import ExpiredTokenError, InvalidTokenError
+from src.backend.infra.manage import settings
 from src.backend.service.manage import (
     ACCESS_TOKEN_TTL,
     REFRESH_TOKEN_TTL,
@@ -64,7 +65,7 @@ async def create_session(
         max_age=int(ACCESS_TOKEN_TTL.total_seconds()),
         expires=access_exp,
         httponly=True,
-        secure=False,
+        secure=settings.cookie_secure,
         samesite="lax",
         path="/",
     )
@@ -74,7 +75,7 @@ async def create_session(
         max_age=refresh_ttl,
         expires=refresh_exp,
         httponly=True,
-        secure=False,
+        secure=settings.cookie_secure,
         samesite="lax",
         path="/",
     )
@@ -147,10 +148,12 @@ def clear_session_cookies(response: Response) -> None:
         path="/",
         httponly=True,
         samesite="lax",
+        secure=settings.cookie_secure,
     )
     response.delete_cookie(
         REFRESH_COOKIE,
         path="/",
         httponly=True,
         samesite="lax",
+        secure=settings.cookie_secure,
     )
