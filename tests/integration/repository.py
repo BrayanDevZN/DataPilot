@@ -47,7 +47,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.redis = FakeRedis(decode_responses=True)
         self.schema = 'control_test_' + uuid4().hex
-        self.engine = create_async_engine(self.url, connect_args={'options': '-c search_path=' + self.schema})
+        self.engine = create_async_engine(self.url, connect_args={'server_settings': {'search_path': self.schema}})
         async with self.engine.begin() as connection:
             await connection.execute(text('CREATE SCHEMA ' + self.schema))
         await Migration(self.engine)()
