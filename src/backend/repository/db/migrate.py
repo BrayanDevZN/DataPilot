@@ -1,7 +1,9 @@
-"""Create the mapped tables; this is not a versioned schema migration system."""
+"""Create mapped tables and ensure public UUID columns; not a versioned migration system."""
 
 from importlib import import_module
+from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from src.backend.logs.log import logger, log_operation
@@ -28,6 +30,11 @@ class Migration:
         logger.info("Criando tabelas ausentes no banco")
         async with self._engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all, checkfirst=True)
+            statements = (Path(__file__).resolve().parent / "public_ids.sql").read_text(encoding="utf-8")
+            logger.info("Garantindo public_id UUID em users e dashboards")
+            for statement in statements.split(";"):
+                if statement.strip():
+                    await connection.execute(text(statement))
         logger.info("Criação das tabelas concluída")
 
     @log_operation

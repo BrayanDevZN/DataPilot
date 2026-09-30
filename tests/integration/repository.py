@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from datetime import timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -354,6 +354,47 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
                     'password': 'hash', 'age': 18, 'gender': 'other'})
             self.assertFalse(session.in_transaction())
             self.assertEqual((await db.users.list())['count'], 1)
+
+    async def test_public_ids_generation_uniqueness_and_immutability(self):
+        owner, other = await self.user(), await self.user('other')
+        first, second = await self.dashboard(owner['user_id']), await self.dashboard(owner['user_id'])
+        self.assertEqual(len({owner['public_id'], other['public_id'], first['public_id'], second['public_id']}), 4)
+        for row in (owner, other, first, second):
+            self.assertIsInstance(row['public_id'], UUID)
+            self.assertEqual(row['public_id'].version, 4)
+        async with self.sessions() as session:
+            db = ControlDb(session)
+            for control, row, key in ((db.users, owner, 'user_id'), (db.dashboards, first, 'id')):
+                with self.subTest(table=control.table.name):
+                    self.assertEqual((await control.list(filters={'public_id': row['public_id']}))['items'][0][key], row[key])
+                    with self.assertRaises(ValueError):
+                        await control.update(row[key], {'public_id': uuid4()})
+                    with self.assertRaises(IntegrityError):
+                        async with session.begin():
+                            await session.execute(update(control.table).where(control.primary_key != row[key]).values(public_id=row['public_id']))
+                    self.assertEqual((await control.get(row[key]))['item']['public_id'], row['public_id'])
+
+    async def test_public_ids_upgrade_existing_rows_is_idempotent(self):
+        owner = await self.user()
+        dashboard = await self.dashboard(owner['user_id'])
+        async with self.engine.begin() as connection:
+            await connection.execute(text('ALTER TABLE users DROP COLUMN public_id'))
+            await connection.execute(text('ALTER TABLE dashboards DROP COLUMN public_id'))
+        await Migration(self.engine)()
+        async with self.sessions() as session:
+            db = ControlDb(session)
+            user_after = (await db.users.get(owner['user_id']))['item']
+            dashboard_after = (await db.dashboards.get(dashboard['id']))['item']
+            self.assertIsInstance(user_after['public_id'], UUID)
+            self.assertIsInstance(dashboard_after['public_id'], UUID)
+            self.assertEqual(dashboard_after['user_id'], owner['user_id'])
+        await Migration(self.engine)()
+        async with self.sessions() as session:
+            db = ControlDb(session)
+            self.assertEqual((await db.users.get(owner['user_id']))['item']['public_id'], user_after['public_id'])
+            self.assertEqual((await db.dashboards.get(dashboard['id']))['item']['public_id'], dashboard_after['public_id'])
+        new_user = await self.user('new')
+        self.assertIsInstance(new_user['public_id'], UUID)
 
 
 if __name__ == '__main__':

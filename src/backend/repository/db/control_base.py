@@ -62,9 +62,9 @@ class TableControl:
         protected = {column.name for column in self.table.c if column.primary_key}
         if updating:
             protected |= {column.name for column in self.table.c if column.foreign_keys}
-            protected |= {"created_at", "updated_at"}
+            protected |= {"created_at", "updated_at", "public_id"}
         if protected & set(data):
-            raise ValueError("Primary keys, ownership and creation timestamps cannot be reassigned")
+            raise ValueError("Identifiers, ownership and creation timestamps cannot be reassigned")
         values = dict(data)
         if updating and "updated_at" in self.table.c:
             values["updated_at"] = func.clock_timestamp()

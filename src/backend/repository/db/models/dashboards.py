@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Text, func, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Text, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base
@@ -19,6 +20,7 @@ class Dashboard(Base):
     __tablename__ = "dashboards"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    public_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, server_default=text("gen_random_uuid()"))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(Text)
     prompt: Mapped[str] = mapped_column(Text, server_default="")
@@ -28,6 +30,8 @@ class Dashboard(Base):
     is_outdated: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (Index("dashboards_public_id_unique", public_id, unique=True),)
 
     user: Mapped["User"] = relationship(
         "User", back_populates="dashboards", foreign_keys="Dashboard.user_id", lazy="raise",

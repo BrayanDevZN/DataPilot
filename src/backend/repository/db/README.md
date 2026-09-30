@@ -40,9 +40,10 @@ await Migration(engine)()
 
 O `__call__` coordena `create_tables()` e `load_models()`. Todas as etapas registram
 logs; falhas são propagadas. A classe usa o engine recebido e não o encerra.
-`checkfirst=True` evita recriar tabelas existentes. Este processo cria tabelas
-ausentes, mas não altera colunas ou constraints de tabelas existentes; evolução
-versionada do esquema exige migrations específicas.
+`checkfirst=True` evita recriar tabelas existentes. O processo cria tabelas
+ausentes e aplica `public_ids.sql` na mesma transação para garantir `public_id`
+em `users` e `dashboards`. Outras alterações de esquema continuam exigindo
+migrations específicas; este mecanismo não é um sistema de migração versionado.
 
 ## Relacionamentos
 
@@ -188,3 +189,22 @@ O script inicia um PostgreSQL temporário local, cria um schema privado por test
 valida CRUD, rollback e disputas entre sessões independentes, e remove apenas
 os próprios schemas. Não usa o .env nem credenciais de produção. O pacote
 `pgserver` precisa ter um wheel compatível com a plataforma/Python usado.
+
+### Identificadores públicos
+
+`users.public_id` e `dashboards.public_id` são UUIDs não nulos, com índice único
+e geração automática no PostgreSQL por `gen_random_uuid()`. Os IDs inteiros e
+as chaves estrangeiras continuam representando os relacionamentos internos.
+Os controles retornam `public_id` como `uuid.UUID` nos dicionários e permitem
+buscar com `list(filters={"public_id": uuid})`; a atualização desse campo é
+rejeitada para manter referências públicas estáveis.
+
+Para atualizar um banco existente, execute:
+
+```bash
+python -m src.backend.service.db.migrate make_migrate
+```
+
+A migração adiciona as colunas ausentes, preenche valores nulos e garante default,
+NOT NULL e índices únicos. Reexecuções preservam UUIDs existentes. Essa mudança
+foi validada apenas em PostgreSQL temporário; não foi aplicada ao banco de produção.
