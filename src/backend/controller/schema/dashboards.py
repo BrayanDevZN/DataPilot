@@ -1,6 +1,6 @@
 """Schemas for dashboard routes."""
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .common import StrictSchema
 
@@ -21,3 +21,11 @@ class DashboardUpdate(StrictSchema):
     file_name: str | None = Field(default=None, max_length=500)
     data_source_id: int | None = Field(default=None, gt=0)
     is_outdated: bool | None = None
+
+    @model_validator(mode="after")
+    def reject_null_required_fields(self):
+        nullable = {"ai_suggestion", "file_name", "data_source_id"}
+        for field in self.model_fields_set - nullable:
+            if getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
