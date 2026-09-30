@@ -1,3 +1,4 @@
+from .auth import router as auth_router
 from .collaboration_notifications import router as collaboration_notifications_router
 from .conversations import router as conversations_router
 from .dashboard_chart_settings import router as dashboard_chart_settings_router
@@ -12,6 +13,7 @@ from .validation_account import router as validation_account_router
 
 
 routers = (
+    auth_router,
     users_router,
     validation_router,
     validation_account_router,
@@ -26,6 +28,9 @@ routers = (
 )
 
 PUBLIC_ROUTES = {
+    "/auth/login",
+    "/auth/refresh",
+    "/auth/logout",
     "/users",
     "/validation-accounts",
     "/validation-accounts/consume",
@@ -33,6 +38,7 @@ PUBLIC_ROUTES = {
 
 __all__ = [
     "routers",
+    "auth_router",
     "PUBLIC_ROUTES",
     "users_router",
     "validation_router",
