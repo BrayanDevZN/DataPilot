@@ -49,7 +49,7 @@ async def _owned_chart(
     return result["item"]
 
 
-@router.get("")
+@router.get("/")
 async def list_dashboard_charts(
     dashboard_id: int = Query(..., ge=1),
     limit: int = Query(100, ge=1, le=1000),
@@ -71,7 +71,7 @@ async def list_dashboard_charts(
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_dashboard_chart(
     data: DashboardChartCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -107,9 +107,9 @@ async def get_dashboard_chart(
     )
 
 
-@router.patch("/{chart_id}")
+@router.patch("/")
 async def update_dashboard_chart(
-    chart_id: int,
+    chart_id: int = Query(..., gt=0),
     data: DashboardChartUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -131,9 +131,9 @@ async def update_dashboard_chart(
     return result
 
 
-@router.delete("/{chart_id}")
+@router.delete("/")
 async def delete_dashboard_chart(
-    chart_id: int,
+    chart_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
