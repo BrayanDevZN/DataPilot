@@ -235,6 +235,73 @@ def main() -> None:
             "history": [],
         },
     )
+    call(
+        session,
+        "POST",
+        "/agents/multi-analysis",
+        200,
+        json={
+            "question": "Resuma os gráficos.",
+            "charts": [{"type": "bar", "title": "Functional"}],
+            "history": [],
+        },
+    )
+    call(
+        session,
+        "POST",
+        "/agents/dashboard-planner",
+        200,
+        json={
+            "user_prompt": "Planeje um dashboard.",
+            "schema": {"produto": "string", "valor": "number"},
+        },
+    )
+    call(
+        session,
+        "POST",
+        "/agents/dashboard-general",
+        200,
+        json={
+            "plan": {"goal": "overview"},
+            "schema": {"produto": "string", "valor": "number"},
+            "metrics": [{"name": "valor"}],
+        },
+    )
+    call(
+        session,
+        "POST",
+        "/agents/dashboard-specific",
+        200,
+        json={
+            "user_prompt": "Foque em valor.",
+            "plan": {"goal": "overview"},
+            "schema": {"produto": "string", "valor": "number"},
+            "metrics": [{"name": "valor"}],
+        },
+    )
+    call(
+        session,
+        "POST",
+        "/agents/dashboard-multi-general",
+        200,
+        json={
+            "plan": {"goal": "overview"},
+            "schema": {"produto": "string", "valor": "number"},
+            "charts": [{"type": "bar"}],
+        },
+    )
+    call(
+        session,
+        "POST",
+        "/agents/dashboard-multi-specific",
+        200,
+        json={
+            "user_prompt": "Compare os gráficos.",
+            "plan": {"goal": "overview"},
+            "schema": {"produto": "string", "valor": "number"},
+            "charts": [{"type": "bar"}],
+        },
+    )
 
     conversation = call(
         session,
