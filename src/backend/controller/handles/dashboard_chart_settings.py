@@ -2,10 +2,14 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
+from src.backend.controller.schema.dashboard_chart_settings import (
+    DashboardChartSettingsSave,
+    DashboardChartSettingsUpdate,
+)
 from src.backend.service.db.repository import control_repository
 from src.backend.service.manage import control_db
 
@@ -73,29 +77,13 @@ async def list_chart_settings(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def save_chart_settings(
-    data: dict[str, Any] = Body(...),
+    data: DashboardChartSettingsSave,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    payload = dict(data)
-
-    try:
-        dashboard_id = int(payload.pop("dashboard_id"))
-    except (KeyError, TypeError, ValueError) as error:
-        raise HTTPException(
-            status_code=400,
-            detail="dashboard_id is required",
-        ) from error
-
-    chart_id = payload.pop("chart_id", None)
-    if chart_id is not None:
-        try:
-            chart_id = int(chart_id)
-        except (TypeError, ValueError) as error:
-            raise HTTPException(status_code=400, detail="Invalid chart_id") from error
-
-    for field in ("id", "updated_at"):
-        payload.pop(field, None)
+    payload = data.model_dump()
+    dashboard_id = payload.pop("dashboard_id")
+    chart_id = payload.pop("chart_id")
 
     await _owned_dashboard(
         session,
@@ -133,20 +121,13 @@ async def get_chart_setting(
 @router.patch("/{setting_id}")
 async def update_chart_setting(
     setting_id: int,
-    data: dict[str, Any] = Body(...),
+    data: DashboardChartSettingsUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     await _owned_setting(session, setting_id, current_user["user_id"])
 
-    payload = dict(data)
-    for field in (
-        "id",
-        "dashboard_id",
-        "chart_id",
-        "updated_at",
-    ):
-        payload.pop(field, None)
+    payload = data.model_dump(exclude_unset=True)
 
     if not payload:
         raise HTTPException(status_code=400, detail="No editable fields provided")
