@@ -6,7 +6,7 @@ from sqlalchemy import func, select, update
 
 from src.backend.logs.log import log_operation
 
-from ..control_base import RecordNotFoundError, TableControl
+from ..control_base import transactional, RecordNotFoundError, TableControl
 from ..models import Conversation, Message
 
 
@@ -14,6 +14,7 @@ class MessagesControl(TableControl):
     model = Message
 
     @log_operation
+    @transactional
     async def append(self, conversation_id: int, user_id: int,
                      role: Literal["user", "assistant"], content: str) -> dict[str, Any]:
         self._require_transaction()
@@ -28,6 +29,7 @@ class MessagesControl(TableControl):
         return result
 
     @log_operation
+    @transactional
     async def list_by_conversation(self, conversation_id: int, user_id: int,
                                    *, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         if not 1 <= limit <= 1000 or offset < 0:

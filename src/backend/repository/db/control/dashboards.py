@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 
 from src.backend.logs.log import log_operation
 
-from ..control_base import TableControl
+from ..control_base import transactional, TableControl
 from ..models import Dashboard, DashboardChart, DashboardChartSettings
 from .dashboard_charts import DashboardChartsControl
 
@@ -16,10 +16,12 @@ class DashboardsControl(TableControl):
     model = Dashboard
 
     @log_operation
+    @transactional
     async def list_by_user(self, user_id: int, *, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         return await self.list(filters={"user_id": user_id}, limit=limit, offset=offset)
 
     @log_operation
+    @transactional
     async def get_with_charts(self, dashboard_id: int, user_id: int) -> dict[str, Any]:
         # A parent lock keeps a concurrent refresh from mixing old and new charts.
         dashboard = await self._lock_dashboard(dashboard_id, owner_user_id=user_id)
@@ -34,6 +36,7 @@ class DashboardsControl(TableControl):
         return {"found": True, "item": dashboard}
 
     @log_operation
+    @transactional
     async def finish_refresh(self, dashboard_id: int, user_id: int,
                              expected_updated_at: datetime, charts: list[dict[str, Any]],
                              ai_suggestion: str, *, prompt: str | None = None) -> dict[str, Any]:
@@ -53,6 +56,7 @@ class DashboardsControl(TableControl):
         return result
 
     @log_operation
+    @transactional
     async def mark_outdated_by_source(self, data_source_id: int) -> dict[str, Any]:
         self._require_transaction()
         # Deterministic order when several dashboard locks are acquired.

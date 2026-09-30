@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select
 
 from src.backend.logs.log import log_operation
 
-from ..control_base import RecordNotFoundError, TableControl
+from ..control_base import transactional, RecordNotFoundError, TableControl
 from ..models import User, Validation
 
 
@@ -22,6 +22,7 @@ class ValidationControl(TableControl):
             raise RecordNotFoundError("User not found")
 
     @log_operation
+    @transactional
     async def issue(self, user_id: int, number: str) -> dict[str, Any]:
         if len(number) != 6 or not number.isascii() or not number.isdigit():
             raise ValueError("Verification code must contain six digits")
@@ -30,6 +31,7 @@ class ValidationControl(TableControl):
         return await self.create({"user_id": user_id, "number": number})
 
     @log_operation
+    @transactional
     async def consume(self, user_id: int, number: str, *, max_age: timedelta = timedelta(minutes=10)) -> dict[str, Any]:
         if max_age.total_seconds() <= 0:
             raise ValueError("Code lifetime must be positive")

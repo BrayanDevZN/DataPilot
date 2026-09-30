@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select, update
 
 from src.backend.logs.log import log_operation
 
-from ..control_base import TableControl
+from ..control_base import transactional, TableControl
 from ..models import ValidationAccount
 
 
@@ -20,6 +20,7 @@ class ValidationAccountControl(TableControl):
         await self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended("validation_account:" + email, 0))))
 
     @log_operation
+    @transactional
     async def issue(self, email: str, number: str) -> dict[str, Any]:
         email = email.strip().lower()
         if len(number) != 6 or not number.isascii() or not number.isdigit():
@@ -30,6 +31,7 @@ class ValidationAccountControl(TableControl):
         return await self.create({"email": email, "number": number})
 
     @log_operation
+    @transactional
     async def consume(self, email: str, number: str, *, max_age: timedelta = timedelta(minutes=10)) -> dict[str, Any]:
         email = email.strip().lower()
         if max_age.total_seconds() <= 0:

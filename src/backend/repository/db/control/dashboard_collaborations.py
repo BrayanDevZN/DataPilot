@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from src.backend.logs.log import log_operation
 
-from ..control_base import DashboardChildControl
+from ..control_base import transactional, DashboardChildControl
 from ..models import DashboardCollaboration
 
 
@@ -15,6 +15,7 @@ class DashboardCollaborationsControl(DashboardChildControl):
     model = DashboardCollaboration
 
     @log_operation
+    @transactional
     async def invite(self, dashboard_id: int, owner_user_id: int, collaborator_user_id: int,
                      permission: Literal["read", "edit", "full"]) -> dict[str, Any]:
         if permission not in ("read", "edit", "full") or owner_user_id == collaborator_user_id:
@@ -32,6 +33,7 @@ class DashboardCollaborationsControl(DashboardChildControl):
         return {"item": dict(row)}
 
     @log_operation
+    @transactional
     async def respond(self, collaboration_id: int, collaborator_user_id: int,
                       response: Literal["accepted", "declined"]) -> dict[str, Any]:
         if response not in ("accepted", "declined"):

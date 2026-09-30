@@ -7,7 +7,7 @@ from sqlalchemy import case, func, select, update
 
 from src.backend.logs.log import log_operation
 
-from ..control_base import TableControl
+from ..control_base import transactional, TableControl
 from ..models import DataSource
 
 
@@ -15,10 +15,12 @@ class DataSourcesControl(TableControl):
     model = DataSource
 
     @log_operation
+    @transactional
     async def list_by_user(self, user_id: int, *, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         return await self.list(filters={"user_id": user_id}, limit=limit, offset=offset)
 
     @log_operation
+    @transactional
     async def claim_due(self, user_id: int, *, limit: int = 20,
                         lease: timedelta = timedelta(minutes=5)) -> dict[str, Any]:
         self._require_transaction()
@@ -40,6 +42,7 @@ class DataSourcesControl(TableControl):
         return {"items": [dict(row) for row in rows], "count": len(rows)}
 
     @log_operation
+    @transactional
     async def finish_sync(self, source_id: int, user_id: int, data: dict[str, Any],
                           expected_next_sync_at: datetime) -> dict[str, Any]:
         self._require_transaction()

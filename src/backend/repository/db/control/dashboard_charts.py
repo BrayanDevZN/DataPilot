@@ -6,7 +6,7 @@ from sqlalchemy import delete
 
 from src.backend.logs.log import log_operation
 
-from ..control_base import DashboardChildControl
+from ..control_base import transactional, DashboardChildControl
 from ..models import DashboardChart
 
 
@@ -14,10 +14,12 @@ class DashboardChartsControl(DashboardChildControl):
     model = DashboardChart
 
     @log_operation
+    @transactional
     async def list_by_dashboard(self, dashboard_id: int, *, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         return await self.list(filters={"dashboard_id": dashboard_id}, limit=limit, offset=offset)
 
     @log_operation
+    @transactional
     async def replace_all(self, dashboard_id: int, charts: list[dict[str, Any]]) -> dict[str, Any]:
         self._require_transaction()
         if not charts:

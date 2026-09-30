@@ -70,10 +70,23 @@ class ControlTests(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as session, session.begin():
             return (await DashboardsControl(session).create({'user_id': owner_id, 'title': 'Test'}))['item']
 
-    async def test_crud_filters_and_transaction_requirement(self):
+    async def test_crud_filters_and_context_transactions(self):
         async with self.sessions() as session:
+            control = UsersControl(session)
+            automatic = await control.create({'name': 'Auto', 'username': 'auto',
+                'email': 'auto@example.com', 'password': 'hash', 'age': 18, 'gender': 'other'})
+            self.assertFalse(session.in_transaction())
+            self.assertTrue((await control.get(automatic['item']['user_id']))['found'])
+            await control.delete(automatic['item']['user_id'])
+            self.assertFalse(session.in_transaction())
+            await session.execute(text('SELECT 1'))
             with self.assertRaises(TransactionRequiredError):
-                await UsersControl(session).create({'name': 'No transaction'})
+                await control.list()
+            await session.rollback()
+            with self.assertRaises(ValueError):
+                await control.create({'unknown_column': 'invalid'})
+            self.assertFalse(session.in_transaction())
+            self.assertEqual((await control.list())['count'], 0)
         owner = await self.user()
         async with self.sessions() as session, session.begin():
             control = UsersControl(session)

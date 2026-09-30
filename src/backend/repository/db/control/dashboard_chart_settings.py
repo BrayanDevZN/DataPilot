@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from src.backend.logs.log import log_operation
 
-from ..control_base import DashboardChildControl, RecordNotFoundError
+from ..control_base import transactional, DashboardChildControl, RecordNotFoundError
 from ..models import DashboardChart, DashboardChartSettings
 
 
@@ -15,6 +15,7 @@ class DashboardChartSettingsControl(DashboardChildControl):
     model = DashboardChartSettings
 
     @log_operation
+    @transactional
     async def save(self, dashboard_id: int, data: dict[str, Any], *, chart_id: int | None = None) -> dict[str, Any]:
         values = self._values(data, updating=True)
         await self._lock_dashboard(dashboard_id)

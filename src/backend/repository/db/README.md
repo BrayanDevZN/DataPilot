@@ -72,7 +72,8 @@ de colunas/constraints permanece igual; relationships não exigem migration.
 `control/` contém um arquivo com o nome de cada tabela e uma classe correspondente.
 A implementação comum fica em `control_base.py`, fora de `control/`, para manter
 os contratos de CRUD, filtros e transações consistentes. Cada classe recebe
-`session: AsyncSession`; nenhuma cria uma sessão ou faz commit/rollback global.
+`session: AsyncSession`; nenhuma cria uma sessão. Cada operação abre `async with session.begin()` quando
+não há transação explícita ativa; esse contexto confirma ou reverte a operação.
 Os controles usam SQLAlchemy e retornam somente colunas em dicionários, sem
 objetos ORM ou carregamento implícito de relações. Datas continuam como datetime.
 
@@ -90,11 +91,15 @@ async def create_account_and_conversation(session_factory):
         })
 ```
 
-Abra `session.begin()` **antes** das consultas que fazem parte de uma escrita.
-Sem transação explícita, as escritas e locks lançam `TransactionRequiredError`.
-Um SELECT fora de `begin()` pode iniciar autobegin; finalize essa transação antes
-ou abra a transação explícita desde o começo. Cada tarefa/requisição usa sua
-própria sessão; não compartilhe uma AsyncSession entre tarefas concorrentes.
+Cada método público usa o gerenciador de contexto `session.begin()`. Quando o
+chamador já abriu uma transação explícita, o método participa dela sem fazer
+commit independente. Assim, o exemplo acima continua atômico entre tabelas.
+Chamadas isoladas também funcionam: `await UsersControl(session).create(data)`.
+Não capture uma exceção para continuar uma transação externa abortada.
+
+Um SELECT feito diretamente na sessão pode iniciar autobegin: finalize essa
+transação antes de usar um controle. O controle não confirma operações externas
+implicitamente. Cada tarefa/requisição usa sua própria AsyncSession.
 
 ### Contratos comuns
 
@@ -146,7 +151,7 @@ chamador capture a exceção. Configurações específicas dos charts apagados s
 o ON DELETE CASCADE dos models.
 
 Para sincronização, `claim_due` usa FOR UPDATE SKIP LOCKED e avança `next_sync_at`
-pelo prazo da reserva. **Confirme essa transação antes do acesso externo**.
+pelo prazo da reserva. **Encerre/confirme essa transação antes do acesso externo**.
 Use o `next_sync_at` retornado como `expected_next_sync_at` em `finish_sync`, em
 uma nova transação. A conclusão verifica também se o prazo não expirou. Um worker
 com reserva antiga não pode sobrescrever o resultado de um worker novo. Falhas
