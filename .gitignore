@@ -59,3 +59,4 @@ temp/
 *.sqlite
 *.sqlite3
 .railway/
+src/backend/repository/db/data.db
