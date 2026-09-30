@@ -115,9 +115,9 @@ def main() -> None:
     session = requests.Session()
     collaborator_session = requests.Session()
     suffix = uuid4().hex[:10]
-    email = f"functional-{suffix}@example.com"
+    email = f"datapilot.functional.{suffix}@gmail.com"
     username = f"functional_{suffix}"
-    collaborator_email = f"collaborator-{suffix}@example.com"
+    collaborator_email = f"datapilot.collaborator.{suffix}@gmail.com"
     collaborator_username = f"collaborator_{suffix}"
     password = f"T-{uuid4().hex}aA1!"
 
