@@ -8,7 +8,7 @@ from .common import StrictSchema
 
 
 class AgentHistoryMessage(StrictSchema):
-    role: Literal["user", "assistant", "system"]
+    role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=100_000)
 
 
@@ -55,12 +55,12 @@ class DataAgentRequest(StrictSchema):
 
 class DashboardPlannerAgentRequest(StrictSchema):
     user_prompt: str | None = Field(default=None, min_length=1, max_length=20_000)
-    schema: dict[str, Any]
+    dataset_schema: dict[str, Any] = Field(alias="schema", min_length=1)
 
 
 class DashboardGeneralAgentRequest(StrictSchema):
     plan: dict[str, Any]
-    schema: dict[str, Any]
+    dataset_schema: dict[str, Any] = Field(alias="schema", min_length=1)
     metrics: list[dict[str, Any]] = Field(min_length=1, max_length=500)
 
 
@@ -70,7 +70,7 @@ class DashboardSpecificAgentRequest(DashboardGeneralAgentRequest):
 
 class DashboardMultiGeneralAgentRequest(StrictSchema):
     plan: dict[str, Any]
-    schema: dict[str, Any]
+    dataset_schema: dict[str, Any] = Field(alias="schema", min_length=1)
     charts: list[dict[str, Any]] = Field(min_length=1, max_length=100)
 
 
