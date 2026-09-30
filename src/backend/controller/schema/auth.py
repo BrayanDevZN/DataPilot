@@ -11,6 +11,13 @@ class LoginRequest(StrictSchema):
     auth2: bool = False
     code: str | None = None
 
+    @field_validator("password")
+    @classmethod
+    def validate_password_bytes(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("password must not exceed 72 UTF-8 bytes")
+        return value
+
     @field_validator("code")
     @classmethod
     def validate_code(cls, value: str | None) -> str | None:
