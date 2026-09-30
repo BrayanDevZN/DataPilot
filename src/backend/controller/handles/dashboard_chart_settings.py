@@ -53,7 +53,7 @@ async def _owned_setting(
     return result["item"]
 
 
-@router.get("")
+@router.get("/")
 async def list_chart_settings(
     dashboard_id: int = Query(..., ge=1),
     limit: int = Query(100, ge=1, le=1000),
@@ -75,7 +75,7 @@ async def list_chart_settings(
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def save_chart_settings(
     data: DashboardChartSettingsSave,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -118,9 +118,9 @@ async def get_chart_setting(
     )
 
 
-@router.patch("/{setting_id}")
+@router.patch("/")
 async def update_chart_setting(
-    setting_id: int,
+    setting_id: int = Query(..., gt=0),
     data: DashboardChartSettingsUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -142,9 +142,9 @@ async def update_chart_setting(
     return result
 
 
-@router.delete("/{setting_id}")
+@router.delete("/")
 async def delete_chart_setting(
-    setting_id: int,
+    setting_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
