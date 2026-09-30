@@ -136,12 +136,6 @@ async def consume_refresh_token(request: Request) -> dict[str, Any]:
     return claims
 
 
-async def revoke_refresh(claims: dict[str, Any]) -> None:
-    jti = claims.get("jti")
-    if jti:
-        await redis.delete(f"refresh_token:{jti}")
-
-
 def clear_session_cookies(response: Response) -> None:
     response.delete_cookie(
         ACCESS_COOKIE,
