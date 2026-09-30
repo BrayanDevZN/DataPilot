@@ -1,6 +1,7 @@
 """Pydantic schemas for AI agent routes."""
 
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import Field, model_validator
 
@@ -76,3 +77,21 @@ class DashboardMultiGeneralAgentRequest(StrictSchema):
 
 class DashboardMultiSpecificAgentRequest(DashboardMultiGeneralAgentRequest):
     user_prompt: str = Field(min_length=1, max_length=20_000)
+
+
+class DashboardAgentResponse(StrictSchema):
+    analysis_id: UUID
+    charts: list[dict[str, Any]]
+    engine: Literal["polars", "spark"]
+    analysis_expires_in: int = Field(gt=0)
+
+
+class DashboardAnalysisRequest(StrictSchema):
+    analysis_id: UUID
+    question: str | None = Field(default=None, min_length=1, max_length=20_000)
+    history: list[AgentHistoryMessage] = Field(default_factory=list, max_length=200)
+
+
+class DashboardAnalysisResponse(StrictSchema):
+    analysis_id: UUID
+    output: str
