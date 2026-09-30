@@ -13,6 +13,7 @@ from src.backend.controller.schema.sender import (
     CreateAccountEmailRequest,
     SenderResponse,
 )
+from src.backend.infra.manage import settings
 from src.backend.service.manage import control_db, sender, verification_codes
 
 
@@ -25,7 +26,7 @@ async def _issue_and_send(
     email_type: str,
     email: str,
     send,
-) -> None:
+) -> str:
     code = await verification_codes.issue(
         email_type,
         email,
@@ -38,10 +39,30 @@ async def _issue_and_send(
         await verification_codes.delete(email_type, email)
         raise
 
+    return code
+
+
+def _sender_response(
+    *,
+    email_type: str,
+    email: str,
+    code: str,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "sent": True,
+        "type": email_type,
+        "email": email,
+        "expires_in": CODE_TTL_SECONDS,
+    }
+    if settings.enviroiment == "test":
+        payload["code"] = code
+    return payload
+
 
 @router.post(
     "/create-account",
     response_model=SenderResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def send_create_account_email(
@@ -56,23 +77,23 @@ async def send_create_account_email(
             detail="Email already registered",
         )
 
-    await _issue_and_send(
+    code = await _issue_and_send(
         "create_account",
         email,
         sender.create_account,
     )
 
-    return {
-        "sent": True,
-        "type": "create_account",
-        "email": email,
-        "expires_in": CODE_TTL_SECONDS,
-    }
+    return _sender_response(
+        email_type="create_account",
+        email=email,
+        code=code,
+    )
 
 
 @router.post(
     "/change-password",
     response_model=SenderResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def send_change_password_email(
@@ -88,23 +109,23 @@ async def send_change_password_email(
             detail="User not found",
         )
 
-    await _issue_and_send(
+    code = await _issue_and_send(
         "change_password",
         email,
         sender.change_password,
     )
 
-    return {
-        "sent": True,
-        "type": "change_password",
-        "email": email,
-        "expires_in": CODE_TTL_SECONDS,
-    }
+    return _sender_response(
+        email_type="change_password",
+        email=email,
+        code=code,
+    )
 
 
 @router.post(
     "/auth2",
     response_model=SenderResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def send_auth2_email(
@@ -119,7 +140,7 @@ async def send_auth2_email(
 
     email = str(claims["email"]).strip().lower()
 
-    await _issue_and_send(
+    code = await _issue_and_send(
         "auth2",
         email,
         sender.auth2,
@@ -127,9 +148,8 @@ async def send_auth2_email(
 
     clear_auth2_user_cookie(response)
 
-    return {
-        "sent": True,
-        "type": "auth2",
-        "email": email,
-        "expires_in": CODE_TTL_SECONDS,
-    }
+    return _sender_response(
+        email_type="auth2",
+        email=email,
+        code=code,
+    )
