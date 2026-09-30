@@ -1,6 +1,8 @@
 """Schemas for user routes."""
 
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import EmailStr, Field, field_validator, model_validator
 
@@ -80,3 +82,18 @@ class UserUpdate(StrictSchema):
             if getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be null")
         return self
+
+
+class UserResponse(StrictSchema):
+    user_id: int
+    public_id: UUID
+    name: str
+    username: str
+    email: EmailStr
+    role: str
+    status: bool
+    auth2: bool
+    age: int
+    gender: str
+    profile_image: str | None = None
+    created_at: datetime
