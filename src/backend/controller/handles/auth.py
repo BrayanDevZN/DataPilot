@@ -42,7 +42,7 @@ async def _find_user(
 
 
 @router.post(
-    "/login",
+    "/",
     response_model=LoginResponse,
 )
 async def login(
