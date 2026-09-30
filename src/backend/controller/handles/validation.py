@@ -3,10 +3,11 @@
 from secrets import randbelow
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
+from src.backend.controller.schema.validation import ValidationConsume
 from src.backend.service.db.repository import control_repository
 
 
@@ -37,16 +38,11 @@ async def issue_validation(
 
 @router.post("/consume")
 async def consume_validation(
-    data: dict[str, Any] = Body(...),
+    data: ValidationConsume,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    number = str(data.get("number") or "").strip()
-    if not number:
-        raise HTTPException(
-            status_code=400,
-            detail="Verification code is required",
-        )
+    number = data.number
 
     try:
         result = await control_repository(
