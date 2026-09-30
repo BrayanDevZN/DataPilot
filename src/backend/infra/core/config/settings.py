@@ -37,6 +37,7 @@ def env_bool(name: str, default: bool = False) -> bool:
     raise ValueError(f"{name} must be a boolean")
 
 
+@log_operation
 def positive_int(name: str, default: int) -> int:
     try:
         value = int(os.getenv(name, str(default)))
