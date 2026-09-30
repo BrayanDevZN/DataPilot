@@ -7,17 +7,17 @@ from .common import StrictSchema
 
 class UserCreate(StrictSchema):
     name: str = Field(min_length=1, max_length=200)
-    username: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_.-]+$")
+    username: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_]+$")
     email: EmailStr
     password: str = Field(min_length=8, max_length=72)
-    age: int = Field(ge=0, le=130)
+    age: int = Field(gt=0, le=130)
     gender: str = Field(min_length=1, max_length=50)
     profile_image: str | None = Field(default=None, max_length=2_000)
 
 
 class UserUpdate(StrictSchema):
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    username: str | None = Field(default=None, min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_.-]+$")
+    username: str | None = Field(default=None, min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_]+$")
     email: EmailStr | None = None
     password: str | None = Field(default=None, min_length=8, max_length=72)
     age: int | None = Field(default=None, ge=0, le=130)
