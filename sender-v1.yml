@@ -1,0 +1,76 @@
+x-configs: &app-config
+    env_file: .env
+  
+
+services:
+    kafka: 
+      container_name: kafka-sender
+      image: brayandevzn/mcp_sender:kafka-v1
+
+    base:
+      container_name: base-sender
+      image: brayandevzn/mcp_sender:base-v1
+      <<: *app-config
+
+    redis:
+      container_name: redis-sender
+      image: redis:alpine
+    consumer:
+      container_name: consumer-sender
+      image: brayandevzn/mcp_sender:consumer-v1
+      depends_on:
+          base:
+            condition: service_started
+          redis:
+            condition: service_started
+          kafka:
+            condition: service_healthy
+
+      <<: *app-config
+
+    api:
+
+      image: brayandevzn/mcp_sender:api-v1
+      container_name: api
+
+      ports:
+        - 8000:8000
+      <<: *app-config
+
+      depends_on:
+        kafka:
+          condition: service_healthy
+
+        base:
+          condition: service_started
+        
+        redis:
+          condition: service_started
+
+        consumer:
+          condition: service_started
+
+        redis-worker:
+          condition: service_started
+
+
+    redis-worker:
+      container_name: redis-worker
+      image: redis:alpine
+
+    worker:
+      container_name: worker-sender
+      image: brayandevzn/mcp_server:worker-v1
+      depends_on:
+        redis-worker:
+          condition: service_started
+        base:
+          condition: service_started
+        api:
+          condition: service_started
+      <<: *app-config
+      
+
+        
+
+
