@@ -13,18 +13,18 @@ class TokenUser:
     """Read a JWT from the request and return the corresponding database user."""
 
     def _token(self, request: Request) -> str:
+        cookie_token = (
+            request.cookies.get("access_token")
+            or request.cookies.get("token")
+        )
+        if cookie_token:
+            return cookie_token.strip()
+
         authorization = request.headers.get("authorization", "")
         scheme, _, bearer = authorization.partition(" ")
 
         if scheme.lower() == "bearer" and bearer.strip():
             return bearer.strip()
-
-        cookie_token = (
-            request.cookies.get("token")
-            or request.cookies.get("access_token")
-        )
-        if cookie_token:
-            return cookie_token.strip()
 
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -71,6 +71,13 @@ class TokenUser:
                 detail="Invalid authentication token",
                 headers={"WWW-Authenticate": "Bearer"},
             ) from error
+
+        if claims.get("token_type") != "access":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid access token type",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
         identifier, value = self._identifier(claims)
 
