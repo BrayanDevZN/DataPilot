@@ -27,7 +27,7 @@ class DashboardContextStore:
         self,
         *,
         user_id: int,
-        prompt: str | None,
+        user_order: str | None,
         plan: dict[str, Any],
         schema: dict[str, Any],
         charts: list[dict[str, Any]],
@@ -36,7 +36,7 @@ class DashboardContextStore:
         analysis_id = str(uuid4())
         payload = {
             "user_id": user_id,
-            "prompt": prompt,
+            "user_order": user_order,
             "plan": plan,
             "schema": schema,
             "charts": charts,
@@ -158,7 +158,7 @@ class DashboardAgentPipeline:
 
         analysis_id = await self.contexts.save(
             user_id=user_id,
-            prompt=prompt,
+            user_order=prompt,
             plan=plan,
             schema=schema,
             charts=charts,
@@ -168,6 +168,7 @@ class DashboardAgentPipeline:
         return {
             "analysis_id": analysis_id,
             "charts": charts,
+            "user_order": prompt,
             "engine": tools.engine,
             "analysis_expires_in": self.contexts.TTL_SECONDS,
         }
@@ -192,7 +193,7 @@ class DashboardAgentPipeline:
         interpretation = {
             "plan": context.get("plan"),
             "schema": context.get("schema"),
-            "dashboard_prompt": context.get("prompt"),
+            "user_order": context.get("user_order"),
             "engine": context.get("engine"),
         }
 
