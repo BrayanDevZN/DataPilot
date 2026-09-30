@@ -35,7 +35,7 @@ async def _owned_message(
     return result["item"]
 
 
-@router.get("")
+@router.get("/")
 async def list_messages(
     conversation_id: int = Query(..., ge=1),
     limit: int = Query(100, ge=1, le=1000),
@@ -53,7 +53,7 @@ async def list_messages(
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_message(
     data: MessageCreate,
     current_user: dict[str, Any] = Depends(get_current_user),
@@ -91,9 +91,9 @@ async def get_message(
     )
 
 
-@router.patch("/{message_id}")
+@router.patch("/")
 async def update_message(
-    message_id: int,
+    message_id: int = Query(..., gt=0),
     data: MessageUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -110,9 +110,9 @@ async def update_message(
     return result
 
 
-@router.delete("/{message_id}")
+@router.delete("/")
 async def delete_message(
-    message_id: int,
+    message_id: int = Query(..., gt=0),
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
