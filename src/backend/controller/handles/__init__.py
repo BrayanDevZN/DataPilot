@@ -9,15 +9,11 @@ from .data_sources import router as data_sources_router
 from .messages import router as messages_router
 from .sender import router as sender_router
 from .users import router as users_router
-from .validation import router as validation_router
-from .validation_account import router as validation_account_router
 
 
 routers = (
     auth_router,
     users_router,
-    validation_router,
-    validation_account_router,
     conversations_router,
     messages_router,
     sender_router,
@@ -34,8 +30,6 @@ PUBLIC_ROUTES = {
     "/auth/refresh",
     "/auth/logout",
     "/users",
-    "/validation-accounts",
-    "/validation-accounts/consume",
     "/sender/create-account",
     "/sender/change-password",
     "/sender/auth2",
@@ -46,8 +40,6 @@ __all__ = [
     "auth_router",
     "PUBLIC_ROUTES",
     "users_router",
-    "validation_router",
-    "validation_account_router",
     "conversations_router",
     "messages_router",
     "sender_router",
