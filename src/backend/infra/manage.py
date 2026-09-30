@@ -5,6 +5,7 @@ from src.backend.logs.log import logger, log_operation
 from .connection.database import PostgreSQLConnection, SQLConnection
 from .sender import Sender
 from .core.config import Settings
+from .core.file import EmailFiles
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 
@@ -12,6 +13,7 @@ class Infrastructure:
     @log_operation
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self.email_files = EmailFiles()
         self.database = PostgreSQLConnection(
             database=settings.db_name, host=settings.db_host, port=settings.db_port,
             username=settings.db_user, password=settings.db_password,
@@ -35,6 +37,7 @@ settings = Settings.from_env()
 infra = Infrastructure(settings)
 database = infra.database
 sender = infra.sender
+email_files = infra.email_files
 
 
 @log_operation

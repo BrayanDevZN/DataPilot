@@ -80,6 +80,26 @@ class InfraTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await Infrastructure(Settings()).sender.send("to@example.com", "Subject", "Body")
 
+    async def test_email_files_and_html_sender(self):
+        from src.backend.infra.manage import email_files
+        from html.parser import HTMLParser
+        templates = email_files.read()
+        self.assertEqual(set(templates), {"create_account", "change_password"})
+        for name, template in templates.items():
+            with self.subTest(template=name):
+                self.assertIn("{{code}}", template)
+                self.assertIn('<html lang="pt-BR">', template)
+                HTMLParser().feed(template)
+        message = templates["create_account"].replace("{{code}}", "012345")
+        infrastructure = Infrastructure(Settings(email_user="sender@example.com", email_password="test-password"))
+        with patch("src.backend.infra.sender.yagmail.SMTP") as mocked:
+            result = await infrastructure.sender.send("to@example.com", "Confirme sua conta", message, html=True)
+            self.assertEqual(result, {"sent": True})
+            mocked.return_value.__enter__.return_value.send.assert_called_once_with(
+                to="to@example.com", subject="Confirme sua conta", contents=message,
+            )
+        self.assertIn("{{code}}", email_files.read()["create_account"])
+
     def test_logger(self):
         from logging import StreamHandler
         from logging.handlers import RotatingFileHandler

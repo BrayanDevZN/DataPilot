@@ -103,3 +103,22 @@ em `src/backend/logs/app.log`. O caminho independe do diretório de execução.
 O arquivo usa rotação de 5 MiB com três backups. Logs e backups estão no
 `.gitignore` da raiz. Argumentos, resultados e mensagens de exceção não são
 registrados automaticamente, para evitar expor credenciais.
+
+## Templates de e-mail
+
+`core/create_account.html` e `core/change_password.html` contêm os modelos com
+o marcador `{{code}}`. O objeto `email_files` lê os arquivos em UTF-8 e retorna
+um dicionário com as chaves `create_account` e `change_password`. Os caminhos
+são relativos ao módulo, independentemente do diretório de execução.
+
+```python
+from src.backend.infra.manage import email_files, sender
+
+async def send_code(recipient: str, code: str):
+    template = email_files.read()["create_account"]
+    # O código deve ser validado como seis dígitos pela camada responsável.
+    message = template.replace("{{code}}", code)
+    return await sender.send(recipient, "Confirme sua conta", message, html=True)
+```
+
+A geração e validação dos códigos continuam nas camadas responsáveis.
