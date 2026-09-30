@@ -122,3 +122,23 @@ async def send_code(recipient: str, code: str):
 ```
 
 A geração e validação dos códigos continuam nas camadas responsáveis.
+
+## Redis
+
+Na raiz do projeto, execute `docker compose up -d redis` para iniciar
+`redis:alpine` na porta 6379, sem senha. Nenhuma variável de ambiente adicional
+é necessária. O objeto `redis` usa localhost:6379 e banco 0.
+
+```python
+from src.backend.infra.manage import redis
+
+async def startup():
+    client = await redis()  # cria o cliente, testa PING e retorna redis.asyncio.Redis
+    return client
+
+async def shutdown():
+    await redis.close()
+```
+
+`create_client()` reutiliza o cliente; `test()` e `test_connection()` executam
+PING. `infra.close()` encerra PostgreSQL e Redis. Importar não acessa o servidor.

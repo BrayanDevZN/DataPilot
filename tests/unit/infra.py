@@ -9,7 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 # Allow direct execution without installing the backend as a package.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -59,6 +59,27 @@ class InfraTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await connection.close()
             await infrastructure.close()
+
+    async def test_redis(self):
+        from src.backend.infra.connection.redis import RedisConnection
+        with patch("src.backend.infra.connection.redis.Redis") as mocked:
+            client = mocked.return_value
+            client.ping = AsyncMock(return_value=True)
+            client.aclose = AsyncMock()
+            connection = RedisConnection()
+            self.assertIs(await connection(), client)
+            self.assertTrue(await connection.test_connection())
+            self.assertIs(connection.client, client)
+            mocked.assert_called_once_with(host="localhost", port=6379, db=0,
+                decode_responses=True, socket_connect_timeout=5, socket_timeout=5)
+            await connection.close()
+            client.aclose.assert_awaited_once()
+            self.assertIsNone(connection._client)
+            client.ping.side_effect = ConnectionError("unavailable")
+            with self.assertRaises(ConnectionError):
+                await connection()
+            self.assertIsNone(connection._client)
+            self.assertEqual(client.aclose.await_count, 2)
 
     async def test_sender(self):
         import threading

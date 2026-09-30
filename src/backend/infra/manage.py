@@ -3,6 +3,7 @@
 from src.backend.logs.log import logger, log_operation
 
 from .connection.database import PostgreSQLConnection, SQLConnection
+from .connection.redis import RedisConnection
 from .sender import Sender
 from .core.config import Settings
 from .core.file import EmailFiles
@@ -14,6 +15,7 @@ class Infrastructure:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.email_files = EmailFiles()
+        self.redis = RedisConnection()
         self.database = PostgreSQLConnection(
             database=settings.db_name, host=settings.db_host, port=settings.db_port,
             username=settings.db_user, password=settings.db_password,
@@ -21,7 +23,7 @@ class Infrastructure:
         )
         self.sender = Sender(settings.email_user, settings.email_password,
                              timeout=settings.email_timeout)
-        logger.info("Infraestrutura pronta: PostgreSQL e Sender")
+        logger.info("Infraestrutura pronta: PostgreSQL, Redis e Sender")
 
     @log_operation
     def external_database(self, url: str, *, connect_args: dict | None = None) -> SQLConnection:
@@ -30,12 +32,16 @@ class Infrastructure:
 
     @log_operation
     async def close(self) -> None:
-        await self.database.close()
+        try:
+            await self.database.close()
+        finally:
+            await self.redis.close()
 
 
 settings = Settings.from_env()
 infra = Infrastructure(settings)
 database = infra.database
+redis = infra.redis
 sender = infra.sender
 email_files = infra.email_files
 
