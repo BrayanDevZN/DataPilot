@@ -39,7 +39,10 @@ class Infrastructure:
             connect_args=database_connect_args,
         )
         self.sender = Sender(settings.url_sender)
-        self.openai = OpenAIClient(settings.openai_api_key)
+        self.openai = OpenAIClient(
+            settings.openai_api_key,
+            environment=settings.enviroiment,
+        )
         logger.info("Infraestrutura pronta: SQL, Redis, Celery e Sender")
 
     @log_operation
