@@ -1,0 +1,55 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      ENVIROIMENT: test
+      DATABASE_URL: ""
+      OPENAI_API_KEY: ""
+      SING: ""
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            src/backend/requirements.txt
+            tests/requirements.txt
+
+      - name: Install Java for PySpark imports
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r tests/requirements.txt
+
+      - name: Run all unit tests
+        run: |
+          set -euo pipefail
+          for test_file in tests/unit/*.py; do
+            echo "::group::Running $test_file"
+            python "$test_file"
+            echo "::endgroup::"
+          done
