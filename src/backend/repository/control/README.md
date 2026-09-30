@@ -41,3 +41,19 @@ conservadora e serializa essas operações; pode ser refinada quando o volume
 exigir. Escritas feitas diretamente nos controles de banco não invalidam este
 cache. Falhas de banco e Redis são propagadas; banco e Redis não têm commit
 distribuído. Uma falha Redis após o commit não desfaz a gravação no banco.
+
+## Manager
+
+`ControlDb` reúne as 11 classes com o mesmo cliente Redis e a mesma sessão:
+
+```python
+from src.backend.repository.manage import ControlDb
+
+controls = ControlDb(redis_client, session)
+# await controls.users.select("public_id", public_id)
+# await controls.users.insert(data)
+```
+
+`service/db/tables.py` fornece o objeto `control_db` com os recursos da infra.
+Os controles SQL específicos seguem acessíveis por `controls.users.db`, por
+exemplo; alterações feitas por essa interface não invalidam o cache.

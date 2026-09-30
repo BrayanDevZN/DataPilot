@@ -11,6 +11,7 @@ import unittest
 from datetime import timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -18,7 +19,6 @@ import pgserver
 from sqlalchemy import func, text, update
 from fakeredis.aioredis import FakeRedis
 from unittest.mock import AsyncMock, patch
-from src.backend.repository import control as cached_controls
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -45,6 +45,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         logger.setLevel(cls.previous_log_level)
 
     async def asyncSetUp(self):
+        self.redis = FakeRedis(decode_responses=True)
         self.schema = 'control_test_' + uuid4().hex
         self.engine = create_async_engine(self.url, connect_args={'options': '-c search_path=' + self.schema})
         async with self.engine.begin() as connection:
@@ -56,21 +57,39 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         async with self.engine.begin() as connection:
             await connection.execute(text('DROP SCHEMA ' + self.schema + ' CASCADE'))
         await self.engine.dispose()
+        await self.redis.aclose()
+
+    def database_controls(self, session):
+        """Exercise the SQL controls through the cached manager's db attributes."""
+        manager = ControlDb(self.redis, session)
+        return SimpleNamespace(**{name: control.db for name, control in vars(manager).items()})
+
+    async def test_manager_instantiates_cached_controls(self):
+        async with self.sessions() as session:
+            manager = ControlDb(self.redis, session)
+            self.assertEqual(len(vars(manager)), 11)
+            for name, control in vars(manager).items():
+                self.assertTrue(type(control).__name__.startswith('Control'))
+                self.assertIs(control.session, session)
+                self.assertIs(control.cache.redis, self.redis)
+                self.assertEqual(control.table.name, name)
+            with self.assertRaises(TypeError):
+                ControlDb(None, session)
 
     async def user(self, suffix='owner'):
         async with self.sessions() as session, session.begin():
-            return (await ControlDb(session).users.create({
+            return (await self.database_controls(session).users.create({
                 'name': suffix, 'username': suffix, 'email': suffix + '@example.com',
                 'password': 'stored-hash', 'age': 18, 'gender': 'other',
             }))['item']
 
     async def dashboard(self, owner_id):
         async with self.sessions() as session, session.begin():
-            return (await ControlDb(session).dashboards.create({'user_id': owner_id, 'title': 'Test'}))['item']
+            return (await self.database_controls(session).dashboards.create({'user_id': owner_id, 'title': 'Test'}))['item']
 
     async def test_crud_filters_and_context_transactions(self):
         async with self.sessions() as session:
-            control = ControlDb(session).users
+            control = self.database_controls(session).users
             automatic = await control.create({'name': 'Auto', 'username': 'auto',
                 'email': 'auto@example.com', 'password': 'hash', 'age': 18, 'gender': 'other'})
             self.assertFalse(session.in_transaction())
@@ -87,7 +106,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await control.list())['count'], 0)
         owner = await self.user()
         async with self.sessions() as session, session.begin():
-            control = ControlDb(session).users
+            control = self.database_controls(session).users
             self.assertEqual((await control.get_by_email('OWNER@EXAMPLE.COM'))['item']['user_id'], owner['user_id'])
             self.assertFalse((await control.update(owner['user_id'], {'name': 'Wrong'}, expected={'name': 'stale'}))['updated'])
             changed = await control.update(owner['user_id'], {'name': 'Changed'}, expected={'name': 'owner'})
@@ -101,20 +120,20 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         owner = await self.user()
         try:
             async with self.sessions() as session, session.begin():
-                await ControlDb(session).conversations.create({'user_id': owner['user_id'], 'title': 'Rollback'})
-                await ControlDb(session).dashboards.create({'user_id': owner['user_id'], 'title': 'Rollback'})
+                await self.database_controls(session).conversations.create({'user_id': owner['user_id'], 'title': 'Rollback'})
+                await self.database_controls(session).dashboards.create({'user_id': owner['user_id'], 'title': 'Rollback'})
                 raise RuntimeError('abort transaction')
         except RuntimeError:
             pass
         async with self.sessions() as session:
-            self.assertEqual((await ControlDb(session).conversations.list())['count'], 0)
-            self.assertEqual((await ControlDb(session).dashboards.list())['count'], 0)
+            self.assertEqual((await self.database_controls(session).conversations.list())['count'], 0)
+            self.assertEqual((await self.database_controls(session).dashboards.list())['count'], 0)
 
     async def test_concurrent_duplicate_email_is_rejected_by_database(self):
         async def insert_user(username):
             try:
                 async with self.sessions() as session, session.begin():
-                    await ControlDb(session).users.create({'name': 'Test', 'username': username,
+                    await self.database_controls(session).users.create({'name': 'Test', 'username': username,
                         'email': 'duplicate@example.com', 'password': 'hash', 'age': 18, 'gender': 'other'})
                 return True
             except IntegrityError:
@@ -124,57 +143,57 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_concurrent_account_code_consumption_and_expiration(self):
         async with self.sessions() as session, session.begin():
-            await ControlDb(session).validation_account.issue('test@example.com', '012345')
+            await self.database_controls(session).validation_account.issue('test@example.com', '012345')
         async def consume():
             async with self.sessions() as session, session.begin():
-                return (await ControlDb(session).validation_account.consume('test@example.com', '012345'))['consumed']
+                return (await self.database_controls(session).validation_account.consume('test@example.com', '012345'))['consumed']
         self.assertEqual(sum(await asyncio.gather(consume(), consume())), 1)
         async with self.sessions() as session, session.begin():
-            code = (await ControlDb(session).validation_account.issue('test@example.com', '654321'))['item']
+            code = (await self.database_controls(session).validation_account.issue('test@example.com', '654321'))['item']
             await session.execute(update(ValidationAccount).where(ValidationAccount.validation_id == code['validation_id']).values(created_at=func.now() - timedelta(hours=1)))
-            self.assertFalse((await ControlDb(session).validation_account.consume('test@example.com', '654321'))['consumed'])
+            self.assertFalse((await self.database_controls(session).validation_account.consume('test@example.com', '654321'))['consumed'])
 
     async def test_concurrent_password_code_consumption(self):
         owner = await self.user()
         async with self.sessions() as session, session.begin():
-            await ControlDb(session).validation.issue(owner['user_id'], '012345')
+            await self.database_controls(session).validation.issue(owner['user_id'], '012345')
         async def consume():
             async with self.sessions() as session, session.begin():
-                return (await ControlDb(session).validation.consume(owner['user_id'], '012345'))['consumed']
+                return (await self.database_controls(session).validation.consume(owner['user_id'], '012345'))['consumed']
         self.assertEqual(sum(await asyncio.gather(consume(), consume())), 1)
 
     async def test_conversation_scope_and_message_atomicity(self):
         owner, other = await self.user(), await self.user('other')
         async with self.sessions() as session, session.begin():
-            conversation = (await ControlDb(session).conversations.create({'user_id': owner['user_id'], 'title': 'Test'}))['item']
+            conversation = (await self.database_controls(session).conversations.create({'user_id': owner['user_id'], 'title': 'Test'}))['item']
             with self.assertRaises(RecordNotFoundError):
-                await ControlDb(session).messages.append(conversation['id'], other['user_id'], 'user', 'Forbidden')
-            await ControlDb(session).messages.append(conversation['id'], owner['user_id'], 'user', 'Test')
-            self.assertEqual((await ControlDb(session).messages.list_by_conversation(conversation['id'], owner['user_id']))['count'], 1)
-            self.assertEqual((await ControlDb(session).messages.list_by_conversation(conversation['id'], other['user_id']))['count'], 0)
-            self.assertFalse((await ControlDb(session).conversations.delete_owned(conversation['id'], other['user_id']))['deleted'])
-            await ControlDb(session).conversations.delete_owned(conversation['id'], owner['user_id'])
-            self.assertEqual((await ControlDb(session).messages.list())['count'], 0)
+                await self.database_controls(session).messages.append(conversation['id'], other['user_id'], 'user', 'Forbidden')
+            await self.database_controls(session).messages.append(conversation['id'], owner['user_id'], 'user', 'Test')
+            self.assertEqual((await self.database_controls(session).messages.list_by_conversation(conversation['id'], owner['user_id']))['count'], 1)
+            self.assertEqual((await self.database_controls(session).messages.list_by_conversation(conversation['id'], other['user_id']))['count'], 0)
+            self.assertFalse((await self.database_controls(session).conversations.delete_owned(conversation['id'], other['user_id']))['deleted'])
+            await self.database_controls(session).conversations.delete_owned(conversation['id'], owner['user_id'])
+            self.assertEqual((await self.database_controls(session).messages.list())['count'], 0)
 
     async def test_concurrent_settings_saves_produce_one_row(self):
         owner = await self.user()
         dashboard = await self.dashboard(owner['user_id'])
         async def save(color):
             async with self.sessions() as session, session.begin():
-                return await ControlDb(session).dashboard_chart_settings.save(dashboard['id'], {'chart_color': color})
+                return await self.database_controls(session).dashboard_chart_settings.save(dashboard['id'], {'chart_color': color})
         await asyncio.gather(save('red'), save('blue'))
         async with self.sessions() as session:
-            rows = await ControlDb(session).dashboard_chart_settings.list(filters={'dashboard_id': dashboard['id']})
+            rows = await self.database_controls(session).dashboard_chart_settings.list(filters={'dashboard_id': dashboard['id']})
             self.assertEqual(rows['count'], 1)
 
     async def test_concurrent_invitation_response_has_one_winner(self):
         owner, other = await self.user(), await self.user('other')
         dashboard = await self.dashboard(owner['user_id'])
         async with self.sessions() as session, session.begin():
-            collaboration = (await ControlDb(session).dashboard_collaborations.invite(dashboard['id'], owner['user_id'], other['user_id'], 'read'))['item']
+            collaboration = (await self.database_controls(session).dashboard_collaborations.invite(dashboard['id'], owner['user_id'], other['user_id'], 'read'))['item']
         async def respond(value):
             async with self.sessions() as session, session.begin():
-                return (await ControlDb(session).dashboard_collaborations.respond(collaboration['id'], other['user_id'], value))['updated']
+                return (await self.database_controls(session).dashboard_collaborations.respond(collaboration['id'], other['user_id'], value))['updated']
         self.assertEqual(sum(await asyncio.gather(respond('accepted'), respond('declined'))), 1)
 
     async def test_refresh_version_and_failed_replacement(self):
@@ -182,13 +201,13 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         dashboard = await self.dashboard(owner['user_id'])
         charts = [{'chart_type': 'bar', 'title': 'Original', 'chart_data': []}]
         async with self.sessions() as session, session.begin():
-            await ControlDb(session).dashboard_charts.replace_all(dashboard['id'], charts)
+            await self.database_controls(session).dashboard_charts.replace_all(dashboard['id'], charts)
             with self.assertRaises(IntegrityError):
-                await ControlDb(session).dashboard_charts.replace_all(dashboard['id'], [{'chart_type': 'bar', 'title': None, 'chart_data': []}])
-            self.assertEqual((await ControlDb(session).dashboard_charts.list_by_dashboard(dashboard['id']))['items'][0]['title'], 'Original')
+                await self.database_controls(session).dashboard_charts.replace_all(dashboard['id'], [{'chart_type': 'bar', 'title': None, 'chart_data': []}])
+            self.assertEqual((await self.database_controls(session).dashboard_charts.list_by_dashboard(dashboard['id']))['items'][0]['title'], 'Original')
         async def refresh(title):
             async with self.sessions() as session, session.begin():
-                return (await ControlDb(session).dashboards.finish_refresh(
+                return (await self.database_controls(session).dashboards.finish_refresh(
                     dashboard['id'], owner['user_id'], dashboard['updated_at'],
                     [{'chart_type': 'bar', 'title': title, 'chart_data': []}], 'Analysis',
                 ))['updated']
@@ -197,17 +216,17 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_concurrent_source_claims_and_stale_lease(self):
         owner = await self.user()
         async with self.sessions() as session, session.begin():
-            source = (await ControlDb(session).data_sources.create({'user_id': owner['user_id'], 'name': 'Source',
+            source = (await self.database_controls(session).data_sources.create({'user_id': owner['user_id'], 'name': 'Source',
                 'file_name': 'api', 'file_data': [], 'row_count': 0, 'column_count': 0,
                 'source_type': 'web', 'refresh_interval_days': 1, 'next_sync_at': func.now() - timedelta(days=1)}))['item']
         async def claim():
             async with self.sessions() as session, session.begin():
-                return await ControlDb(session).data_sources.claim_due(owner['user_id'])
+                return await self.database_controls(session).data_sources.claim_due(owner['user_id'])
         claims = await asyncio.gather(claim(), claim())
         self.assertEqual(sum(result['count'] for result in claims), 1)
         claimed = next(result['items'][0] for result in claims if result['count'])
         async with self.sessions() as session, session.begin():
-            control = ControlDb(session).data_sources
+            control = self.database_controls(session).data_sources
             data = {'file_data': [{'a': 1}], 'row_count': 1, 'column_count': 1}
             self.assertFalse((await control.finish_sync(source['id'], owner['user_id'], data, source['next_sync_at']))['updated'])
             self.assertTrue((await control.finish_sync(source['id'], owner['user_id'], data, claimed['next_sync_at']))['updated'])
@@ -216,7 +235,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_notification_scope(self):
         owner, other = await self.user(), await self.user('other')
         async with self.sessions() as session, session.begin():
-            control = ControlDb(session).collaboration_notifications
+            control = self.database_controls(session).collaboration_notifications
             notification = (await control.create({'user_id': owner['user_id'], 'message': 'Test', 'notification_type': 'invitation'}))['item']
             self.assertFalse((await control.mark_read(notification['id'], other['user_id']))['updated'])
             self.assertEqual((await control.mark_all_read(owner['user_id']))['count'], 1)
@@ -226,7 +245,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         owner, other = await self.user(), await self.user('other')
         dashboard = await self.dashboard(owner['user_id'])
         async with self.sessions() as session:
-            db = ControlDb(session)
+            db = self.database_controls(session)
             self.assertEqual(len(vars(db)), 11)
             self.assertTrue(all(control.session is session for control in vars(db).values()))
             self.assertFalse(session.in_transaction())
@@ -274,8 +293,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
                     self.assertFalse(session.in_transaction())
                     redis = FakeRedis(decode_responses=True)
                     try:
-                        class_name = 'Control' + type(control).__name__.removesuffix('Control')
-                        cached = getattr(cached_controls, class_name)(redis, session)
+                        cached = getattr(ControlDb(redis, session), name)
                         inserted = await cached.insert(values)
                         identity = inserted[control.primary_key.name]
                         cache_key = f'{name}:{control.primary_key.name}:{identity}'
@@ -298,12 +316,12 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
                     finally:
                         await redis.aclose()
         with self.assertRaises(TypeError):
-            ControlDb(None)
+            ControlDb(self.redis, None)
 
     async def test_scoped_queries_and_dashboard_aggregation(self):
         owner, other = await self.user(), await self.user('other')
         async with self.sessions() as session:
-            db = ControlDb(session)
+            db = self.database_controls(session)
             user_id = owner['user_id']
             self.assertEqual((await db.users.get_by_username(' OWNER '))['item']['user_id'], user_id)
             self.assertFalse((await db.users.get_by_username('missing'))['found'])
@@ -353,7 +371,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         owner = await self.user()
         dashboard = await self.dashboard(owner['user_id'])
         async with self.sessions() as session:
-            db = ControlDb(session)
+            db = self.database_controls(session)
             calls = [
                 lambda: db.users.list(limit=0),
                 lambda: db.users.list(offset=-1),
@@ -391,7 +409,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(row['public_id'], UUID)
             self.assertEqual(row['public_id'].version, 4)
         async with self.sessions() as session:
-            db = ControlDb(session)
+            db = self.database_controls(session)
             for control, row, key in ((db.users, owner, 'user_id'), (db.dashboards, first, 'id')):
                 with self.subTest(table=control.table.name):
                     self.assertEqual((await control.list(filters={'public_id': row['public_id']}))['items'][0][key], row[key])
@@ -410,7 +428,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
             await connection.execute(text('ALTER TABLE dashboards DROP COLUMN public_id'))
         await Migration(self.engine)()
         async with self.sessions() as session:
-            db = ControlDb(session)
+            db = self.database_controls(session)
             user_after = (await db.users.get(owner['user_id']))['item']
             dashboard_after = (await db.dashboards.get(dashboard['id']))['item']
             self.assertIsInstance(user_after['public_id'], UUID)
@@ -418,7 +436,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(dashboard_after['user_id'], owner['user_id'])
         await Migration(self.engine)()
         async with self.sessions() as session:
-            db = ControlDb(session)
+            db = self.database_controls(session)
             self.assertEqual((await db.users.get(owner['user_id']))['item']['public_id'], user_after['public_id'])
             self.assertEqual((await db.dashboards.get(dashboard['id']))['item']['public_id'], dashboard_after['public_id'])
         new_user = await self.user('new')
@@ -428,8 +446,9 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         redis = FakeRedis(decode_responses=True)
         try:
             async with self.sessions() as session:
-                users = cached_controls.ControlUsers(redis, session)
-                dashboards = cached_controls.ControlDashboards(redis, session)
+                manager = ControlDb(redis, session)
+                users = manager.users
+                dashboards = manager.dashboards
                 user = await users.insert({'name': 'Cache', 'username': 'cache', 'email': 'cache@example.com',
                     'password': 'hash', 'age': 18, 'gender': 'other'})
                 public_key = f"users:public_id:{user['public_id']}"
