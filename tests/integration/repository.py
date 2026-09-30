@@ -80,7 +80,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as session, session.begin():
             return (await self.database_controls(session).users.create({
                 'name': suffix, 'username': suffix, 'email': suffix + '@example.com',
-                'password': 'stored-hash', 'age': 18, 'gender': 'other',
+                'password': 'stored-hash', 'age': 18, 'gender': 'other', 'auth2': False,
             }))['item']
 
     async def dashboard(self, owner_id):
@@ -252,7 +252,8 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
             conversation = (await db.conversations.create({'user_id': owner['user_id'], 'title': 'Parent'}))['item']
             cases = {
                 'users': ({'name': 'CRUD', 'username': 'crud', 'email': 'crud@example.com',
-                           'password': 'hash', 'age': 18, 'gender': 'other'}, {'name': 'Changed'}),
+                           'password': 'hash', 'age': 18, 'gender': 'other', 'auth2': False},
+                          {'name': 'Changed', 'auth2': True}),
                 'validation': ({'user_id': owner['user_id'], 'number': '123456'}, {'number': '654321'}),
                 'validation_account': ({'email': 'crud@example.com', 'number': '123456'}, {'used': True}),
                 'conversations': ({'user_id': owner['user_id'], 'title': 'CRUD'}, {'title': 'Changed'}),
@@ -425,6 +426,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
         dashboard = await self.dashboard(owner['user_id'])
         async with self.engine.begin() as connection:
             await connection.execute(text('ALTER TABLE users DROP COLUMN public_id'))
+            await connection.execute(text('ALTER TABLE users DROP COLUMN auth2'))
             await connection.execute(text('ALTER TABLE dashboards DROP COLUMN public_id'))
         await Migration(self.engine)()
         async with self.sessions() as session:
@@ -432,6 +434,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
             user_after = (await db.users.get(owner['user_id']))['item']
             dashboard_after = (await db.dashboards.get(dashboard['id']))['item']
             self.assertIsInstance(user_after['public_id'], UUID)
+            self.assertFalse(user_after['auth2'])
             self.assertIsInstance(dashboard_after['public_id'], UUID)
             self.assertEqual(dashboard_after['user_id'], owner['user_id'])
         await Migration(self.engine)()
@@ -441,6 +444,7 @@ class RepositoryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await db.dashboards.get(dashboard['id']))['item']['public_id'], dashboard_after['public_id'])
         new_user = await self.user('new')
         self.assertIsInstance(new_user['public_id'], UUID)
+        self.assertFalse(new_user['auth2'])
 
     async def test_cached_public_id_aliases_rollback_and_cascades(self):
         redis = FakeRedis(decode_responses=True)
