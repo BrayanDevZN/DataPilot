@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from src.backend.infra.core.config import Settings
+from src.backend.infra.core.config.settings import Settings
 from src.backend.infra.manage import Infrastructure
 from src.backend.logs.log import LOG_FILE, logger
 
@@ -34,7 +34,7 @@ class InfraTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(settings.email_password, "test-password")
                 self.assertNotIn("test-password", repr(settings))
 
-            local = root / "src/backend/infra/core/.env"
+            local = root / "src/backend/infra/core/config/.env"
             local.parent.mkdir(parents=True)
             local.write_text("DB_NAME=local_database\n", encoding="utf-8")
             with patch.dict(os.environ, {}, clear=True):
