@@ -61,26 +61,41 @@ class Cache:
 
     @log_operation
     async def consume(self, key: str, expected: str) -> dict[str, bool]:
+        if not isinstance(key, str) or not key:
+            raise ValueError("Provide a non-empty cache key")
         if not isinstance(expected, str) or not expected:
             raise ValueError("Provide the expected cache value")
 
-        script = """
-        local current = redis.call('GET', KEYS[1])
-        if not current then
-            return 0
-        end
-        if current ~= ARGV[1] then
-            return -1
-        end
-        redis.call('DEL', KEYS[1])
-        return 1
-        """
+        while True:
+            try:
+                async with self.redis.pipeline(transaction=True) as pipeline:
+                    await pipeline.watch(key)
+                    current = await pipeline.get(key)
 
-        result = await self.redis.eval(script, 1, key, expected)
-        return {
-            "consumed": int(result) == 1,
-            "found": int(result) != 0,
-        }
+                    if current is None:
+                        return {"consumed": False, "found": False}
+
+                    current_value = (
+                        current.decode()
+                        if isinstance(current, bytes)
+                        else str(current)
+                    )
+
+                    if current_value != expected:
+                        return {"consumed": False, "found": True}
+
+                    pipeline.multi()
+                    pipeline.delete(key)
+                    deleted = (await pipeline.execute())[0]
+                    return {
+                        "consumed": bool(deleted),
+                        "found": True,
+                    }
+            except WatchError:
+                logger.warning(
+                    "Conflito ao consumir valor do cache; repetindo operação"
+                )
+                await asyncio.sleep(0)
 
     @log_operation
     async def incr(self, key: str, amount: int = 1) -> dict[str, int]:
