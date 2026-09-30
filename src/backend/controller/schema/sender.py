@@ -24,3 +24,4 @@ class SenderResponse(StrictSchema):
     type: Literal["create_account", "change_password", "auth2"]
     email: EmailStr
     expires_in: int
+    code: str | None = None
