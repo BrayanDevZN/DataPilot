@@ -67,6 +67,7 @@ class Settings:
     openai_api_key: str | None = field(default=None, repr=False)
     cors_allowed_origins: tuple[str, ...] = ()
     cookie_secure: bool = False
+    cookie_samesite: str = "lax"
 
     @classmethod
     @log_operation
@@ -94,4 +95,5 @@ class Settings:
                 if origin.strip()
             ),
             cookie_secure=env_bool("COOKIE_SECURE", False),
+            cookie_samesite=(os.getenv("COOKIE_SAMESITE") or "lax").strip().lower(),
         )
