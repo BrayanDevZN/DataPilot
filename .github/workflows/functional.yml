@@ -42,16 +42,39 @@ jobs:
         run: |
           touch .env
 
-      - name: Start sender stack
+      - name: Start sender stack detached
         run: |
           docker compose -f sender-v1.yml up -d
 
-      - name: Start backend stack
+      - name: Start backend stack detached
         env:
           DATAPILOT_API_PORT: "8001"
           URL_SENDER: http://host.docker.internal:8000
         run: |
           docker compose up -d redis redis-celery api worker
+
+      - name: Wait for DataPilot API
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8001/users/ >/dev/null 2>&1; then
+              echo "DataPilot API is reachable"
+              exit 0
+            fi
+
+            if ! docker compose ps api --status running | grep -q api; then
+              echo "DataPilot API container is not running"
+              docker compose ps
+              docker compose logs --no-color api
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          echo "DataPilot API did not become ready"
+          docker compose ps
+          docker compose logs --no-color api
+          exit 1
 
       - name: Set up Python for functional tests
         uses: actions/setup-python@v5
