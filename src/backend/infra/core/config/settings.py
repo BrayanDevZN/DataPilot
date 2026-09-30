@@ -24,6 +24,19 @@ def load_environment(project_root: Path | None = None) -> Path | None:
 
 
 @log_operation
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
 def positive_int(name: str, default: int) -> int:
     try:
         value = int(os.getenv(name, str(default)))
@@ -52,6 +65,7 @@ class Settings:
     sing: str | None = field(default=None, repr=False)
     openai_api_key: str | None = field(default=None, repr=False)
     cors_allowed_origins: tuple[str, ...] = ()
+    cookie_secure: bool = False
 
     @classmethod
     @log_operation
@@ -78,4 +92,5 @@ class Settings:
                 for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
                 if origin.strip()
             ),
+            cookie_secure=env_bool("COOKIE_SECURE", False),
         )
