@@ -50,6 +50,7 @@ class Settings:
     url_email: str | None = None
     secret: str | None = field(default=None, repr=False)
     sing: str | None = field(default=None, repr=False)
+    openai_api_key: str | None = field(default=None, repr=False)
     cors_allowed_origins: tuple[str, ...] = ()
 
     @classmethod
@@ -71,6 +72,7 @@ class Settings:
             url_email=os.getenv("URL_EMAIL"),
             secret=os.getenv("SECRET"),
             sing=os.getenv("SING"),
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
             cors_allowed_origins=tuple(
                 origin.strip()
                 for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
