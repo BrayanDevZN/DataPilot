@@ -2,10 +2,13 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.controller.dependencies import get_current_user, get_session
+from src.backend.controller.schemas.auth import LoginResponse
+from src.backend.controller.schemas.users import UserCreate, UserUpdate
+from src.backend.controller.session import create_session
 from src.backend.service.manage import control_db, hash
 
 
@@ -18,29 +21,27 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=LoginResponse,
+)
 async def create_user(
-    data: dict[str, Any] = Body(...),
+    data: UserCreate,
+    response: Response,
     session: AsyncSession = Depends(get_session),
 ):
-    payload = dict(data)
-    for field in ("user_id", "public_id", "created_at"):
-        payload.pop(field, None)
-
-    password = payload.get("password")
-    if not isinstance(password, str) or not password:
-        raise HTTPException(status_code=400, detail="Password is required")
-
-    payload["password"] = hash.generate(password)
-    payload.setdefault("role", "user")
-    payload.setdefault("status", False)
+    payload = data.model_dump()
+    payload["password"] = hash.generate(payload["password"])
+    payload["role"] = "user"
+    payload["status"] = False
 
     try:
         user = await control_db.users.create(session, payload)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 
-    return _public_user(user)
+    return await create_session(response, user)
 
 
 @router.get("/me")
@@ -52,13 +53,11 @@ async def get_me(
 
 @router.patch("/me")
 async def update_me(
-    data: dict[str, Any] = Body(...),
+    data: UserUpdate,
     current_user: dict[str, Any] = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    payload = dict(data)
-    for field in ("user_id", "public_id", "role", "status", "created_at"):
-        payload.pop(field, None)
+    payload = data.model_dump(exclude_unset=True)
 
     if "password" in payload:
         payload["password"] = hash.generate(payload["password"])
