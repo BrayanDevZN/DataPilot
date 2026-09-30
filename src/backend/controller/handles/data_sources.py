@@ -88,6 +88,34 @@ async def list_data_sources(
     }
 
 
+@router.get("/linked-dashboards")
+async def get_linked_dashboards(
+    data_source_id: int = Query(..., gt=0),
+    current_user: dict[str, Any] = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _owned(
+        session,
+        data_source_id,
+        current_user["user_id"],
+    )
+
+    result = await control_repository(
+        session,
+    ).dashboards.db.list(
+        filters={
+            "user_id": current_user["user_id"],
+            "data_source_id": data_source_id,
+        },
+        limit=1000,
+    )
+
+    return {
+        "dashboards": result["items"],
+        "count": result["count"],
+    }
+
+
 @router.get("/{data_source_id}")
 async def get_data_source(
     data_source_id: int,
