@@ -2,10 +2,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..base import Base
+from ..types import JSONType
 
 if TYPE_CHECKING:
     from .dashboards import Dashboard
@@ -19,11 +19,11 @@ class DataSource(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(Text)
     file_name: Mapped[str] = mapped_column(Text)
-    file_data: Mapped[list[dict]] = mapped_column(JSONB)
+    file_data: Mapped[list[dict]] = mapped_column(JSONType)
     row_count: Mapped[int] = mapped_column(Integer)
     column_count: Mapped[int] = mapped_column(Integer)
     source_type: Mapped[str] = mapped_column(String(20), server_default="file")
-    connection_config: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    connection_config: Mapped[dict] = mapped_column(JSONType, server_default=text("'{}'"))
     sql_query: Mapped[str | None] = mapped_column(Text)
     refresh_interval_days: Mapped[int | None] = mapped_column(Integer)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
